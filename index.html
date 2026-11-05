@@ -427,6 +427,13 @@ async function loadAll(){
   const [d, b, c] = await Promise.all([req('days'), req('breaks'), req('config').catch(() => ({}))]);
   S.days = d.days; S.baseId = d.baseId; S.breaks = b.breaks;
   if (c.config) S.cfg = { ...JSON.parse(JSON.stringify(DEFAULT_CONFIG)), ...c.config };
+  // Repair products saved without an Airtable column name or price
+  S.cfg.products = (S.cfg.products || []).filter(p => p && p.name).map(p => {
+    const def = DEFAULT_CONFIG.products.find(d => d.name === p.name);
+    return { name: p.name, field: p.field || def?.field || `${p.name} Boxes`, cost: Number(p.cost) || def?.cost || 0 };
+  });
+  if (!S.cfg.products.length) S.cfg.products = JSON.parse(JSON.stringify(DEFAULT_CONFIG.products));
+  if (!Array.isArray(S.cfg.breakers) || !S.cfg.breakers.length) S.cfg.breakers = [...DEFAULT_CONFIG.breakers];
   render();
 }
 function render(){ ({ days: renderDays, log: renderLog, setup: renderSetup })[S.tab](); }
