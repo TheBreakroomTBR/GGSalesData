@@ -64,6 +64,16 @@ th:first-child,td:first-child{text-align:left}
 .toast.show{opacity:1}.toast.err{background:var(--loss)}
 .empty{text-align:center;padding:40px 20px;color:var(--muted)}
 @media (max-width:760px){.board{grid-template-columns:1fr 1fr}.board .net{grid-column:1/-1;order:-1;border-bottom:2px solid var(--line)}.board>div+div{border-left:0}.board>div:last-child{border-left:2px solid var(--line)}}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid2>section{margin-top:14px}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;align-items:end}
+.form label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.form .wide{grid-column:span 2}
+.form input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:var(--text);min-width:0}
+tr.editing{background:var(--panel2)}
+tbody tr[data-id]:hover{background:var(--panel2)}
+.who{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+@media (max-width:760px){.grid2{grid-template-columns:1fr}.form .wide{grid-column:auto}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -71,16 +81,20 @@ th:first-child,td:first-child{text-align:left}
 <div class="wrap">
   <header>
     <div><h1>Helmet Live</h1><div class="sub">Daily profit &amp; loss</div></div>
-    <nav role="tablist"><button data-tab="days" aria-selected="true">Days</button><button data-tab="setup" aria-selected="false">Setup</button></nav>
+    <nav role="tablist"><button data-tab="days" aria-selected="true">Dashboard</button><button data-tab="breaks" aria-selected="false">Breaks</button><button data-tab="setup" aria-selected="false">Setup</button></nav>
   </header>
   <main id="view"></main>
 </div>
 <div class="toast" id="toast" role="status"></div>
 <script>
 const API = '/.netlify/functions', KEYK = 'pl_admin_key';
-const BASE_NON_COST = ['Date', 'Sales', 'Orders', 'Breaks', 'Profit', 'Margin', 'id'];
-const S = { days: [], baseId: '', tab: 'days', range: '30d', from: '', to: '', metric: 'profit', tiktok: null,
-  notCost: JSON.parse(localStorage.getItem('pl_not_cost') || '[]') };
+const DAY_NON_COST = ['Date', 'Sales', 'Orders', 'Breaks', 'Helmets', 'Profit', 'Margin', 'id'];
+const BREAK_NON_COST = ['Date', 'Breaker', 'Helmets', 'Sales', 'Notes', 'id'];
+const BREAK_COSTS = ['Shipping', 'Fees', 'Helmet Cost'];
+const DEFAULT_BREAKERS = ['Sam', 'Kris'];
+const COLORS = ['#c9b800', '#9b7bff', '#5fd1c1', '#ff9f6b', '#e57bd8', '#7bb6ff'];
+const S = { days: [], breaks: [], baseId: '', tab: 'days', range: 'week', from: '', to: '', metric: 'profit', group: localStorage.getItem('pl_group') || 'day', tiktok: null, editId: null,
+  notCost: JSON.parse(localStorage.getItem('pl_not_cost') || '[]'), lastBreaker: localStorage.getItem('pl_last_breaker') || 'Sam' };
 
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -88,9 +102,11 @@ const pad = n => String(n).padStart(2, '0');
 const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const money = (n, short) => (n < 0 ? '−' : '') + '$' + Math.abs(n || 0).toLocaleString(undefined, { minimumFractionDigits: short ? 0 : 2, maximumFractionDigits: short ? 0 : 2 });
 const pct = n => (isFinite(n) ? (n * 100).toFixed(1) : '0.0') + '%';
+const num = v => typeof v === 'number' ? v : 0;
 const dayLabel = (k, dow) => new Date(k + 'T12:00:00').toLocaleDateString(undefined, dow ? { weekday: 'short', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' });
 const shift = (k, n) => { const d = new Date(k + 'T12:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
 const todayK = () => ymd(new Date());
+const weekStart = k => { const d = new Date(k + 'T12:00:00'); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); return ymd(d); };
 function toast(m, err){ const t = $('#toast'); t.textContent = m; t.className = 'toast show' + (err ? ' err' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', err ? 12000 : 2600); }
 
 async function req(fn, opts = {}){
@@ -103,30 +119,49 @@ async function req(fn, opts = {}){
 }
 async function guarded(fn){ try { await fn(); } catch (e){ console.error(e); toast(e.message, true); } }
 
-/* ---------- Profit math: any number column you add in Airtable counts as a cost ---------- */
-const nonCost = () => new Set([...BASE_NON_COST, ...S.notCost]);
-function costCols(){
-  const nc = nonCost(), seen = [];
-  S.days.forEach(d => Object.entries(d).forEach(([k, v]) => { if (typeof v === 'number' && !nc.has(k) && !seen.includes(k)) seen.push(k); }));
-  return seen;
-}
-function numberCols(){
-  const seen = [];
-  S.days.forEach(d => Object.entries(d).forEach(([k, v]) => { if (typeof v === 'number' && !['Sales','Orders','Breaks','Profit'].includes(k) && !seen.includes(k)) seen.push(k); }));
-  return seen;
-}
-function rowCalc(d){
-  const cols = costCols();
-  const costs = cols.reduce((a, k) => a + (typeof d[k] === 'number' ? d[k] : 0), 0);
-  const sales = +d.Sales || 0;
-  const profit = typeof d.Profit === 'number' ? d.Profit : sales - costs;
-  return { sales, costs, profit, breaks: +d.Breaks || 0, orders: +d.Orders || 0, hasCosts: cols.some(k => typeof d[k] === 'number') || typeof d.Profit === 'number' };
+/* ---------- Columns: any number column you add in Airtable counts as a cost ---------- */
+function numCols(list, skip){ const seen = []; list.forEach(r => Object.entries(r).forEach(([k, v]) => { if (typeof v === 'number' && !skip.includes(k) && !seen.includes(k)) seen.push(k); })); return seen; }
+const dayCostCols = () => numCols(S.days, DAY_NON_COST).filter(c => !S.notCost.includes(c));
+const breakCostCols = () => { const c = numCols(S.breaks, BREAK_NON_COST); BREAK_COSTS.forEach(x => { if (!c.includes(x)) c.unshift(x); }); return c.filter(x => !S.notCost.includes(x)); };
+function breakers(){ const s = new Set(DEFAULT_BREAKERS); S.breaks.forEach(b => b.Breaker && s.add(b.Breaker)); return [...s]; }
+const colorOf = name => COLORS[breakers().indexOf(name) % COLORS.length] || 'var(--muted)';
+
+/* ---------- Build each day: TikTok sales + your breaks ---------- */
+function buildDays(){
+  const map = {}, dCols = dayCostCols(), bCols = breakCostCols();
+  const get = k => (map[k] ||= { date: k, row: null, breaks: [] });
+  S.days.forEach(d => d.Date && (get(d.Date).row = d));
+  S.breaks.forEach(b => b.Date && get(b.Date).breaks.push(b));
+  return Object.values(map).map(x => {
+    const bs = x.breaks;
+    const breakSales = bs.reduce((a, b) => a + num(b.Sales), 0);
+    const sales = typeof x.row?.Sales === 'number' ? x.row.Sales : breakSales;
+    const dayCost = dCols.reduce((a, c) => a + num(x.row?.[c]), 0);
+    const breakCost = bs.reduce((a, b) => a + bCols.reduce((s, c) => s + num(b[c]), 0), 0);
+    const costs = dayCost + breakCost;
+    const profit = typeof x.row?.Profit === 'number' ? x.row.Profit : sales - costs;
+    const helmets = bs.reduce((a, b) => a + num(b.Helmets), 0) || num(x.row?.Helmets);
+    const nBreaks = bs.length || num(x.row?.Breaks);
+    // Split the day's sales across breaks: a break's own Sales if typed, the rest by helmet count
+    const priced = bs.filter(b => typeof b.Sales === 'number'), unpriced = bs.filter(b => typeof b.Sales !== 'number');
+    const left = Math.max(0, sales - priced.reduce((a, b) => a + b.Sales, 0));
+    const w = unpriced.reduce((a, b) => a + num(b.Helmets), 0);
+    const alloc = bs.map(b => {
+      const allW = bs.reduce((a, y) => a + num(y.Helmets), 0);
+      const s = !unpriced.length ? b.Sales + (allW ? left * num(b.Helmets) / allW : left / bs.length)
+        : typeof b.Sales === 'number' ? b.Sales : (w ? left * num(b.Helmets) / w : left / unpriced.length);
+      const own = bCols.reduce((a, c) => a + num(b[c]), 0);
+      return { b, sales: s, costs: own + (sales ? dayCost * s / sales : dayCost / bs.length), helmets: num(b.Helmets) };
+    });
+    return { date: x.date, row: x.row, breaks: bs, alloc, sales, costs, profit, helmets, nBreaks, orders: num(x.row?.Orders), hasCosts: costs > 0 || typeof x.row?.Profit === 'number' };
+  }).sort((a, b) => a.date.localeCompare(b.date));
 }
 function bounds(){
-  const t = todayK();
-  return { today: [t, t], yesterday: [shift(t, -1), shift(t, -1)], '7d': [shift(t, -6), t], '30d': [shift(t, -29), t], month: [t.slice(0, 8) + '01', t], all: ['0000', '9999'], custom: [S.from || '0000', S.to || '9999'] }[S.range];
+  const t = todayK(), ws = weekStart(t);
+  return { yesterday: [shift(t, -1), shift(t, -1)], week: [ws, shift(ws, 6)], lastweek: [shift(ws, -7), shift(ws, -1)], '30d': [shift(t, -29), t], month: [t.slice(0, 8) + '01', t], lastmonth: (() => { const d = new Date(t.slice(0, 8) + '01T12:00:00'); d.setDate(0); const e = ymd(d); return [e.slice(0, 8) + '01', e]; })(), year: [t.slice(0, 4) + '-01-01', t], all: ['0000', '9999'], custom: [S.from || '0000', S.to || '9999'] }[S.range];
 }
-function inRange(){ const [a, b] = bounds(); return S.days.filter(d => d.Date && d.Date >= a && d.Date <= b).sort((x, y) => x.Date.localeCompare(y.Date)); }
+const inRange = list => { const [a, b] = bounds(); return list.filter(d => d.date >= a && d.date <= b); };
+function sum(days){ return days.reduce((a, d) => ({ sales: a.sales + d.sales, costs: a.costs + d.costs, profit: a.profit + d.profit, breaks: a.breaks + d.nBreaks, helmets: a.helmets + d.helmets, orders: a.orders + d.orders }), { sales: 0, costs: 0, profit: 0, breaks: 0, helmets: 0, orders: 0 }); }
 
 /* ---------- Chart ---------- */
 function barChart(points, fmt){
@@ -145,53 +180,140 @@ function barChart(points, fmt){
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily chart">${g}</svg>`;
 }
 
-/* ---------- Days view ---------- */
+/* ---------- Dashboard ---------- */
+const RANGES = [['yesterday','Yesterday'],['week','This week'],['lastweek','Last week'],['30d','30 days'],['month','This month'],['lastmonth','Last month'],['year','This year'],['all','All time'],['custom','Custom']];
+function rangeBar(extra = ''){
+  return `<div class="bar"><div class="chips">${RANGES.map(([k, l]) => `<button data-range="${k}" class="${S.range === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    ${S.range === 'custom' ? `<input type="date" id="rFrom" value="${S.from}" aria-label="From"><input type="date" id="rTo" value="${S.to}" aria-label="To">` : ''}
+    <span style="flex:1"></span>${extra}</div>`;
+}
+function bindRange(v){
+  $$('[data-range]', v).forEach(b => b.onclick = () => { S.range = b.dataset.range; render(); });
+  $('#rFrom', v)?.addEventListener('change', e => { S.from = e.target.value; render(); });
+  $('#rTo', v)?.addEventListener('change', e => { S.to = e.target.value; render(); });
+}
 function renderDays(){
-  const v = $('#view'), rows = inRange(), cols = costCols();
-  const calc = rows.map(d => ({ d, ...rowCalc(d) }));
-  const t = calc.reduce((a, r) => ({ sales: a.sales + r.sales, costs: a.costs + r.costs, profit: a.profit + r.profit, breaks: a.breaks + r.breaks, orders: a.orders + r.orders }), { sales: 0, costs: 0, profit: 0, breaks: 0, orders: 0 });
-  const missing = calc.filter(r => r.sales && !r.hasCosts).length;
-  const ranges = [['yesterday','Yesterday'],['7d','7 days'],['30d','30 days'],['month','This month'],['all','All time'],['custom','Custom']];
-  const metrics = { profit: ['Profit', r => r.profit], sales: ['Sales', r => r.sales], perBreak: ['Sales per break', r => r.breaks ? r.sales / r.breaks : 0] };
+  const v = $('#view'), all = buildDays(), days = inRange(all), t = sum(days), [a, b] = bounds();
+  const missing = days.filter(d => d.sales && !d.hasCosts).length;
+  const metrics = { profit: ['Profit', d => d.profit], sales: ['Sales', d => d.sales], helmets: ['Helmets', d => d.helmets] };
 
+  // Per breaker
+  const per = {};
+  days.forEach(d => d.alloc.forEach(x => { const k = x.b.Breaker || 'Unassigned'; const p = (per[k] ||= { breaks: 0, helmets: 0, sales: 0, costs: 0 }); p.breaks++; p.helmets += x.helmets; p.sales += x.sales; p.costs += x.costs; }));
+  const unalloc = days.filter(d => !d.breaks.length && d.sales);
+  if (unalloc.length){ const p = (per['No breaks logged'] ||= { breaks: 0, helmets: 0, sales: 0, costs: 0 }); unalloc.forEach(d => { p.sales += d.sales; p.costs += d.costs; }); }
+  const perList = Object.entries(per).sort((x, y) => y[1].sales - x[1].sales);
+
+  // Group by day, week (Mon–Sun) or month
+  const G = S.group, pkey = d => G === 'day' ? d.date : G === 'week' ? weekStart(d.date) : d.date.slice(0, 7);
+  const grp = {}; days.forEach(d => (grp[pkey(d)] ||= []).push(d));
+  const periods = Object.entries(grp).sort((x, y) => x[0].localeCompare(y[0])).map(([k, ds]) => ({ k, ...sum(ds), missing: ds.filter(d => d.sales && !d.hasCosts).length }));
+  const monthName = (k, long) => new Date(k + '-01T12:00:00').toLocaleDateString(undefined, long ? { month: 'long', year: 'numeric' } : { month: 'short', year: '2-digit' });
+  const pLabel = k => G === 'day' ? dayLabel(k, true) : G === 'week' ? `Week of ${dayLabel(k)}` : monthName(k, true);
+  const pShort = k => G === 'month' ? monthName(k) : dayLabel(k);
+  const pName = { day: 'Day', week: 'Week', month: 'Month' }[G];
   v.innerHTML = `
-    <div class="bar">
-      <div class="chips">${ranges.map(([k, l]) => `<button data-range="${k}" class="${S.range === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-      ${S.range === 'custom' ? `<input type="date" id="rFrom" value="${S.from}" aria-label="From"><input type="date" id="rTo" value="${S.to}" aria-label="To">` : ''}
-      <span style="flex:1"></span>
-      ${S.baseId ? `<a class="btn" href="https://airtable.com/${esc(S.baseId)}" target="_blank" rel="noopener" style="text-decoration:none">Open Airtable</a>` : ''}
-      ${S.tiktok?.connected ? `<button class="btn gold" id="pullY">Pull yesterday</button>` : ''}
-    </div>
+    ${rangeBar(`${S.baseId ? `<a class="btn" href="https://airtable.com/${esc(S.baseId)}" target="_blank" rel="noopener" style="text-decoration:none">Open Airtable</a>` : ''}${S.tiktok?.connected ? `<button class="btn gold" id="pullY">Pull yesterday</button>` : ''}`)}
+    <p class="hint">${(() => { const lo = S.range === 'all' || a === '0000' ? days[0]?.date : a, hi = S.range === 'all' || b === '9999' ? days[days.length - 1]?.date : b; return !lo ? '' : lo === hi ? esc(dayLabel(lo, true)) : `${esc(dayLabel(lo, true))} to ${esc(dayLabel(hi, true))}`; })()}</p>
     <div class="board">
       <div><div class="lbl">Sales</div><div class="num">${money(t.sales, true)}</div><div class="foot">${t.orders} orders</div></div>
       <div class="net"><div class="lbl">Profit</div><div class="num ${t.profit < 0 ? 'neg' : ''}">${money(t.profit, true)}</div><div class="foot">${pct(t.sales ? t.profit / t.sales : 0)} margin</div></div>
-      <div><div class="lbl">Costs</div><div class="num">${money(t.costs, true)}</div><div class="foot">${cols.length ? esc(cols.join(', ')) : 'add cost columns in Airtable'}</div></div>
+      <div><div class="lbl">Costs</div><div class="num">${money(t.costs, true)}</div><div class="foot">shipping, fees, helmets</div></div>
     </div>
     <div class="stats">
       <div><div class="k">Breaks</div><div class="v">${t.breaks}</div></div>
+      <div><div class="k">Helmets</div><div class="v">${t.helmets}</div></div>
       <div><div class="k">Sales per break</div><div class="v">${money(t.breaks ? t.sales / t.breaks : 0)}</div></div>
       <div><div class="k">Profit per break</div><div class="v ${t.profit < 0 ? 'neg' : 'pos'}">${money(t.breaks ? t.profit / t.breaks : 0)}</div></div>
-      <div><div class="k">Days logged</div><div class="v">${calc.length}</div></div>
+      <div><div class="k">Profit per helmet</div><div class="v ${t.profit < 0 ? 'neg' : 'pos'}">${money(t.helmets ? t.profit / t.helmets : 0)}</div></div>
     </div>
-    ${missing ? `<div class="banner">${missing} day${missing > 1 ? 's have' : ' has'} sales but no costs yet, so profit there is just sales. Fill them in on Airtable.</div>` : ''}
-    ${calc.length ? `<section><div class="head"><div><h2>Day by day</h2><p class="hint">Grey bars are days still missing costs.</p></div>
-      <div class="chips">${Object.entries(metrics).map(([k, [n]]) => `<button data-metric="${k}" class="${S.metric === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
-      ${barChart(calc.map(r => ({ label: dayLabel(r.d.Date), title: dayLabel(r.d.Date, true), v: metrics[S.metric][1](r), dim: S.metric === 'profit' && !r.hasCosts })), (n, s) => money(n, s))}</section>` : ''}
-    <section><h2>Days</h2><p class="hint">Sales and orders come from TikTok. Everything else comes from what you type in Airtable.</p>
-      ${calc.length ? `<div class="scroll"><table><thead><tr><th>Day</th><th>Sales</th><th>Orders</th><th>Breaks</th>${cols.map(c => `<th>${esc(c)}</th>`).join('')}<th>Profit</th><th>Per break</th></tr></thead><tbody>
-      ${calc.slice().reverse().map(r => `<tr><td>${esc(dayLabel(r.d.Date, true))}${!r.hasCosts && r.sales ? '<span class="tag">needs costs</span>' : ''}</td><td>${money(r.sales)}</td><td>${r.orders || ''}</td><td>${r.breaks || ''}</td>${cols.map(c => `<td>${typeof r.d[c] === 'number' ? money(r.d[c]) : ''}</td>`).join('')}<td class="${r.profit < 0 ? 'neg' : 'pos'}">${money(r.profit)}</td><td>${r.breaks ? money(r.profit / r.breaks) : ''}</td></tr>`).join('')}
-      </tbody></table></div>` : `<div class="empty">No days in this range yet. Pull from TikTok or log a day by hand on Setup.</div>`}
+    ${missing ? `<div class="banner">${missing} day${missing > 1 ? 's have' : ' has'} sales but no costs yet. Add the breaks on the Breaks tab.</div>` : ''}
+
+    <section><h2>By breaker</h2><p class="hint">Sales are split by helmets unless a break has its own sales typed in.</p>
+        ${perList.length ? `<div class="scroll"><table><thead><tr><th>Breaker</th><th>Breaks</th><th>Helmets</th><th>Sales</th><th>Profit</th><th>Per break</th></tr></thead><tbody>
+        ${perList.map(([k, p]) => `<tr><td><span class="who" style="background:${colorOf(k)}"></span>${esc(k)}</td><td>${p.breaks || ''}</td><td>${p.helmets || ''}</td><td>${money(p.sales)}</td><td class="${p.sales - p.costs < 0 ? 'neg' : 'pos'}">${money(p.sales - p.costs)}</td><td>${p.breaks ? money((p.sales - p.costs) / p.breaks) : ''}</td></tr>`).join('')}
+        </tbody></table></div>` : `<div class="empty">No breaks in this range.</div>`}</section>
+
+    <section><div class="head"><div><h2>By ${pName.toLowerCase()}</h2><p class="hint">${G === 'week' ? 'Monday to Sunday. ' : ''}Grey bars still have days missing costs.</p></div>
+      <div class="bar" style="margin:0"><div class="chips" aria-label="Group by">${[['day','Day'],['week','Week'],['month','Month']].map(([k, n]) => `<button data-group="${k}" class="${G === k ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <div class="chips" aria-label="Chart">${Object.entries(metrics).map(([k, [n]]) => `<button data-metric="${k}" class="${S.metric === k ? 'on' : ''}">${n}</button>`).join('')}</div></div></div>
+      ${periods.length ? barChart(periods.map(p => ({ label: pShort(p.k), title: pLabel(p.k), v: metrics[S.metric][1](p), dim: S.metric === 'profit' && p.missing > 0 })), S.metric === 'helmets' ? n => String(Math.round(n)) : (n, s) => money(n, s)) : ''}
+      ${periods.length ? `<div class="scroll" style="margin-top:12px"><table><thead><tr><th>${pName}</th><th>Sales</th><th>Breaks</th><th>Helmets</th><th>Costs</th><th>Profit</th><th>Margin</th><th>Per break</th></tr></thead><tbody>
+      ${periods.slice().reverse().map(p => `<tr><td>${esc(pLabel(p.k))}${p.missing ? `<span class="tag">${G === 'day' ? 'needs costs' : `${p.missing} day${p.missing > 1 ? 's need' : ' needs'} costs`}</span>` : ''}</td><td>${money(p.sales)}</td><td>${p.breaks || ''}</td><td>${p.helmets || ''}</td><td>${money(p.costs)}</td><td class="${p.profit < 0 ? 'neg' : 'pos'}">${money(p.profit)}</td><td>${pct(p.sales ? p.profit / p.sales : 0)}</td><td>${p.breaks ? money(p.profit / p.breaks) : ''}</td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="empty">No days in this range yet.</div>`}
     </section>`;
-  $$('[data-range]', v).forEach(b => b.onclick = () => { S.range = b.dataset.range; renderDays(); });
+  bindRange(v);
   $$('[data-metric]', v).forEach(b => b.onclick = () => { S.metric = b.dataset.metric; renderDays(); });
-  $('#rFrom', v)?.addEventListener('change', e => { S.from = e.target.value; renderDays(); });
-  $('#rTo', v)?.addEventListener('change', e => { S.to = e.target.value; renderDays(); });
+  $$('[data-group]', v).forEach(b => b.onclick = () => { S.group = b.dataset.group; localStorage.setItem('pl_group', S.group); renderDays(); });
   $('#pullY', v)?.addEventListener('click', e => pull(null, null, e.target));
 }
 
-/* ---------- Setup view ---------- */
+/* ---------- Breaks: add, edit, delete (saves straight to Airtable) ---------- */
+function breakForm(b){
+  const cols = breakCostCols(), list = breakers(), extra = numCols(S.breaks, [...BREAK_NON_COST, ...cols]);
+  const v = k => typeof b?.[k] === 'number' ? b[k] : '';
+  const field = (k, label) => `<label>${esc(label || k)}<input type="number" step="0.01" data-f="${esc(k)}" value="${v(k)}" placeholder="0.00"></label>`;
+  return `<div class="form">
+    <label>Day<input type="date" data-f="Date" value="${esc(b?.Date || todayK())}"></label>
+    <label>Breaker<input type="text" list="breakerList" data-f="Breaker" value="${esc(b?.Breaker ?? S.lastBreaker)}"><datalist id="breakerList">${list.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>
+    <label>Helmets<input type="number" step="1" data-f="Helmets" value="${v('Helmets')}" placeholder="0"></label>
+    ${cols.map(c => field(c, c === 'Shipping' ? 'Shipping cost' : c)).join('')}
+    ${extra.map(c => field(c)).join('')}
+    <label>Break sales (optional)<input type="number" step="0.01" data-f="Sales" value="${v('Sales')}" placeholder="split by helmets"></label>
+    <label class="wide">Notes<input type="text" data-f="Notes" value="${esc(b?.Notes || '')}"></label>
+  </div>`;
+}
+function readForm(root){
+  const f = {};
+  $$('[data-f]', root).forEach(i => { const k = i.dataset.f; f[k] = i.type === 'number' ? (i.value === '' ? null : Number(i.value)) : i.value.trim(); });
+  return f;
+}
+function renderBreaks(){
+  const v = $('#view'), [a, b] = bounds();
+  const list = S.breaks.filter(x => x.Date >= a && x.Date <= b).sort((x, y) => (y.Date || '').localeCompare(x.Date || '') || (y.id > x.id ? 1 : -1));
+  const cols = breakCostCols(), editing = S.editId && S.breaks.find(x => x.id === S.editId);
+  v.innerHTML = `
+    <section style="margin-top:14px"><h2>${editing ? `Edit ${esc(editing.Breaker || '')} break, ${esc(dayLabel(editing.Date, true))}` : 'Log a break'}</h2>
+      <p class="hint">Saves straight to the Breaks table in Airtable. New cost columns you add there show up here as fields.</p>
+      <div id="bForm">${breakForm(editing || null)}</div>
+      <div class="bar" style="margin-bottom:0"><button class="btn gold" id="bSave">${editing ? 'Save changes' : 'Add break'}</button>${editing ? '<button class="btn" id="bCancel">Cancel</button><span style="flex:1"></span><button class="btn danger" id="bDel">Delete break</button>' : ''}</div>
+    </section>
+    ${rangeBar()}
+    <section style="margin-top:0"><h2>Breaks</h2><p class="hint">${list.length} in this range. Click a row to edit it.</p>
+      ${list.length ? `<div class="scroll"><table><thead><tr><th>Day</th><th>Breaker</th><th>Helmets</th>${cols.map(c => `<th>${esc(c)}</th>`).join('')}<th>Break sales</th><th style="text-align:left">Notes</th></tr></thead><tbody>
+      ${list.map(x => `<tr data-id="${esc(x.id)}" class="${x.id === S.editId ? 'editing' : ''}" style="cursor:pointer"><td>${esc(dayLabel(x.Date, true))}</td><td><span class="who" style="background:${colorOf(x.Breaker)}"></span>${esc(x.Breaker || '')}</td><td>${num(x.Helmets) || ''}</td>${cols.map(c => `<td>${typeof x[c] === 'number' ? money(x[c]) : ''}</td>`).join('')}<td>${typeof x.Sales === 'number' ? money(x.Sales) : ''}</td><td style="text-align:left;max-width:240px;overflow:hidden;text-overflow:ellipsis">${esc(x.Notes || '')}</td></tr>`).join('')}
+      </tbody></table></div>` : `<div class="empty">No breaks in this range.</div>`}
+    </section>`;
+  bindRange(v);
+  $$('tr[data-id]', v).forEach(tr => tr.onclick = () => { S.editId = tr.dataset.id; renderBreaks(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  $('#bCancel')?.addEventListener('click', () => { S.editId = null; renderBreaks(); });
+  $('#bDel')?.addEventListener('click', () => { if (!confirm('Delete this break?')) return; guarded(async () => {
+    await req('breaks', { method: 'DELETE', body: JSON.stringify({ id: S.editId }) });
+    S.breaks = S.breaks.filter(x => x.id !== S.editId); S.editId = null; toast('Break deleted'); renderBreaks();
+  }); });
+  $('#bSave').onclick = e => guarded(async () => {
+    const f = readForm($('#bForm'));
+    if (!f.Date) return toast('Pick a day', true);
+    if (!f.Breaker) return toast('Add who broke it', true);
+    e.target.disabled = true;
+    try {
+      if (S.editId){
+        const { record } = await req('breaks', { method: 'PATCH', body: JSON.stringify({ id: S.editId, fields: f }) });
+        S.breaks = S.breaks.map(x => x.id === S.editId ? record : x); S.editId = null; toast('Break saved');
+      } else {
+        const { record } = await req('breaks', { method: 'POST', body: JSON.stringify({ fields: f }) });
+        S.breaks.push(record); toast(`Added ${f.Breaker}'s break`);
+      }
+      S.lastBreaker = f.Breaker; localStorage.setItem('pl_last_breaker', f.Breaker);
+    } finally { e.target.disabled = false; }
+    renderBreaks();
+  });
+}
+
+/* ---------- Setup ---------- */
 function renderSetup(){
   const v = $('#view'), tt = S.tiktok || {}, y = shift(todayK(), -1);
+  const allNum = [...new Set([...numCols(S.days, DAY_NON_COST), ...numCols(S.breaks, BREAK_NON_COST), ...BREAK_COSTS])];
   v.innerHTML = `
     <section><h2>TikTok Shop</h2>
       ${tt.connected ? `<p class="hint">Connected to <b style="color:var(--text)">${esc(tt.shopName || 'your shop')}</b>. Yesterday's sales pull in on their own every morning.${tt.lastSync ? ` Last pull ${esc(new Date(tt.lastSync).toLocaleString())}.` : ''}</p>
@@ -199,21 +321,21 @@ function renderSetup(){
         `<p class="hint">${tt.error ? esc(tt.error) : 'Connect once and each day’s sales total lands in Airtable automatically.'}</p><button class="btn gold" id="ttOn">Connect TikTok Shop</button>`}
       ${tt.scopes?.length ? `<p class="hint" style="margin-top:10px">Permissions on this login: ${tt.scopes.map(s => `<span class="tag">${esc(s)}</span>`).join(' ')}</p>` : ''}
     </section>
-    <section><h2>Log a day by hand</h2><p class="hint">For days TikTok didn’t pull, or before it’s connected. Only the sales number is written.</p>
+    <section><h2>Set a day's sales by hand</h2><p class="hint">For days TikTok didn’t pull. Overwrites that day’s sales number.</p>
       <div class="row"><label>Day<input type="date" id="mDate" value="${y}"></label><label>Sales<input type="number" step="0.01" id="mSales" placeholder="0.00"></label><button class="btn gold" id="mSave">Save sales</button></div>
     </section>
-    <section><h2>What counts as a cost</h2><p class="hint">Every number column in your Airtable Days table is subtracted from sales, except Orders and Breaks. Untick any column that isn’t a cost.</p>
-      <div style="display:flex;flex-wrap:wrap">${numberCols().map(c => `<label class="check"><input type="checkbox" data-col="${esc(c)}" ${S.notCost.includes(c) ? '' : 'checked'}>${esc(c)}</label>`).join('') || '<span class="hint">No cost columns yet. Add number columns like Fees, Helmet Cost or Shipping in Airtable.</span>'}</div>
+    <section><h2>What counts as a cost</h2><p class="hint">Every number column in Airtable is subtracted from sales, except Helmets, Orders and break sales. Untick any that aren’t costs.</p>
+      <div style="display:flex;flex-wrap:wrap">${allNum.map(c => `<label class="check"><input type="checkbox" data-col="${esc(c)}" ${S.notCost.includes(c) ? '' : 'checked'}>${esc(c)}</label>`).join('')}</div>
     </section>
     <section><h2>Access</h2><button class="btn" id="key">Change admin key</button></section>`;
   $('#ttOn')?.addEventListener('click', () => guarded(async () => { location.href = (await req('tiktok-auth?action=start')).url; }));
-  $('#ttOff')?.addEventListener('click', () => { if (confirm('Disconnect TikTok? Your days stay in Airtable.')) guarded(async () => { await req('tiktok-auth?action=disconnect', { method: 'POST' }); S.tiktok = { connected: false }; renderSetup(); }); });
+  $('#ttOff')?.addEventListener('click', () => { if (confirm('Disconnect TikTok? Your data stays in Airtable.')) guarded(async () => { await req('tiktok-auth?action=disconnect', { method: 'POST' }); S.tiktok = { connected: false }; renderSetup(); }); });
   $('#pullR')?.addEventListener('click', e => pull($('#pFrom').value, $('#pTo').value, e.target));
   $('#mSave').onclick = () => guarded(async () => {
     const date = $('#mDate').value, sales = $('#mSales').value;
     if (!date || sales === '') return toast('Pick a day and type the sales', true);
     await req('days', { method: 'POST', body: JSON.stringify({ date, sales: Number(sales) }) });
-    toast(`Saved ${money(+sales)} for ${dayLabel(date, true)}`); $('#mSales').value = ''; await loadDays();
+    toast(`Saved ${money(+sales)} for ${dayLabel(date, true)}`); $('#mSales').value = ''; await loadAll();
   });
   $$('[data-col]').forEach(c => c.onchange = () => {
     S.notCost = c.checked ? S.notCost.filter(x => x !== c.dataset.col) : [...S.notCost, c.dataset.col];
@@ -227,12 +349,15 @@ async function pull(from, to, btn){
   await guarded(async () => {
     const r = await req('tiktok-sync', { method: 'POST', body: JSON.stringify(from ? { from, to } : {}) });
     toast(r.days.length ? `Pulled ${r.days.map(d => `${dayLabel(d.Date)} ${money(d.Sales)}`).join(', ')}` : 'No sales found for those days');
-    S.tiktok.lastSync = new Date().toISOString(); await loadDays();
+    S.tiktok.lastSync = new Date().toISOString(); await loadAll();
   });
   if (btn){ btn.disabled = false; btn.textContent = from ? 'Pull these days' : 'Pull yesterday'; }
 }
-async function loadDays(){ const d = await req('days'); S.days = d.days; S.baseId = d.baseId; render(); }
-function render(){ (S.tab === 'days' ? renderDays : renderSetup)(); }
+async function loadAll(){
+  const [d, b] = await Promise.all([req('days'), req('breaks')]);
+  S.days = d.days; S.baseId = d.baseId; S.breaks = b.breaks; render();
+}
+function render(){ ({ days: renderDays, breaks: renderBreaks, setup: renderSetup })[S.tab](); }
 $$('nav button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; $$('nav button').forEach(x => x.setAttribute('aria-selected', x === b)); render(); });
 
 (async () => {
@@ -241,7 +366,7 @@ $$('nav button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; $$('nav
   if (u.get('tiktok') === 'error') toast(u.get('msg') || 'TikTok connection failed', true);
   if (u.has('tiktok')) history.replaceState(null, '', location.pathname);
   render();
-  await guarded(loadDays);
+  await guarded(loadAll);
   try { S.tiktok = await req('tiktok-auth?action=status'); } catch (e){ S.tiktok = { connected: false, error: e.message }; }
   render();
 })();
