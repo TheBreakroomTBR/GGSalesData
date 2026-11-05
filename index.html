@@ -98,13 +98,14 @@ table.entry tfoot td{color:var(--muted);font-weight:600;border-bottom:0}
 const API = '/.netlify/functions', KEYK = 'pl_admin_key';
 const DEFAULT_CONFIG = {
   feePct: 8,
+  feeBase: 'gmv',
   breakers: ['Sam', 'Kris'],
   products: [
     { name: 'Gridiron Grail', field: 'Gridiron Grail Boxes', cost: 400 },
     { name: 'Pup Lids', field: 'Pup Lids Boxes', cost: 450 }
   ]
 };
-const DAY_NON_COST = ['Date', 'Sales', 'Orders', 'Breaks', 'Helmets', 'Profit', 'Margin', 'Fees', 'id'];
+const DAY_NON_COST = ['Date', 'Sales', 'GMV', 'Orders', 'Breaks', 'Helmets', 'Profit', 'Margin', 'Fees', 'id'];
 const COLORS = ['#c9b800', '#9b7bff', '#5fd1c1', '#ff9f6b', '#e57bd8', '#7bb6ff'];
 const S = { days: [], breaks: [], baseId: '', cfg: JSON.parse(JSON.stringify(DEFAULT_CONFIG)), tab: 'days', range: 'week', from: '', to: '',
   metric: 'profit', group: localStorage.getItem('pl_group') || 'day', tiktok: null, entryDate: null,
@@ -143,7 +144,9 @@ const dayCostCols = () => numCols(S.days, DAY_NON_COST).filter(c => !S.notCost.i
 const breakExtraCols = () => numCols(S.breaks, breakNonCost()).filter(x => !S.notCost.includes(x));
 // Fees: the day's own Fees number if you set one, otherwise the default % of that day's sales
 const feePct = () => Number(S.cfg.feePct ?? 8) || 0;
-const dayFees = (row, sales) => typeof row?.Fees === 'number' ? row.Fees : sales * feePct() / 100;
+const gmvOf = row => typeof row?.GMV === 'number' ? row.GMV : typeof row?.Sales === 'number' ? row.Sales : null;
+const feeBaseOf = row => (S.cfg.feeBase === 'sales' && typeof row?.Sales === 'number' ? row.Sales : gmvOf(row)) || 0;
+const dayFees = row => typeof row?.Fees === 'number' ? row.Fees : feeBaseOf(row) * feePct() / 100;
 const boxesOf = b => S.cfg.products.reduce((a, p) => a + num(b[p.field]), 0);
 const boxCostCalc = b => S.cfg.products.reduce((a, p) => a + num(b[p.field]) * (+p.cost || 0), 0);
 // Box Cost is saved with the row when logged, so later price changes don't rewrite old days
@@ -160,8 +163,8 @@ function buildDays(){
   S.breaks.forEach(b => b.Date && get(b.Date).rows.push(b));
   return Object.values(map).map(x => {
     const rs = x.rows;
-    const sales = typeof x.row?.Sales === 'number' ? x.row.Sales : rs.reduce((a, b) => a + num(b.Sales), 0);
-    const fees = dayFees(x.row, sales);
+    const sales = gmvOf(x.row) ?? rs.reduce((a, b) => a + num(b.Sales), 0);
+    const fees = x.row ? dayFees(x.row) : 0;
     const dayCost = dCols.reduce((a, c) => a + num(x.row?.[c]), 0) + fees;
     const costs = dayCost + rs.reduce((a, b) => a + rowCost(b), 0);
     const profit = typeof x.row?.Profit === 'number' ? x.row.Profit : sales - costs;
@@ -251,7 +254,7 @@ function renderDays(){
     ${rangeBar(`${S.baseId ? `<a class="btn" href="https://airtable.com/${esc(S.baseId)}" target="_blank" rel="noopener" style="text-decoration:none">Open Airtable</a>` : ''}${S.tiktok?.connected ? `<button class="btn gold" id="pullY">Pull yesterday</button>` : ''}`)}
     <p class="hint">${!lo ? '' : lo === hi ? esc(dayLabel(lo, true)) : `${esc(dayLabel(lo, true))} to ${esc(dayLabel(hi, true))}`}</p>
     <div class="board four">
-      <div><div class="lbl">Sales</div><div class="num">${money(t.sales, true)}</div><div class="foot">${t.orders} orders</div></div>
+      <div><div class="lbl">GMV</div><div class="num">${money(t.sales, true)}</div><div class="foot">${t.orders} orders</div></div>
       <div class="net"><div class="lbl">Profit</div><div class="num ${t.profit < 0 ? 'neg' : ''}">${money(t.profit, true)}</div><div class="foot">${pct(t.sales ? t.profit / t.sales : 0)} margin</div></div>
       <div><div class="lbl">Costs</div><div class="num">${money(t.costs, true)}</div><div class="foot">boxes, shipping, fees</div></div>
       <div><div class="lbl">Helmets opened</div><div class="num">${fmtN(t.boxes)}</div><div class="foot">${prodSplit(t.byProd)}${perWeek !== null ? `<br>${fmtN(perWeek)} per week` : ''}</div></div>
@@ -299,11 +302,11 @@ function renderLog(){
   v.innerHTML = `
     <section style="margin-top:14px"><div class="head"><div><h2>Log a day</h2><p class="hint">Enter the day's shipping, then how many of each helmet each breaker opened. Box cost is worked out from your prices: ${S.cfg.products.map(p => `${esc(p.name)} ${money(p.cost, true)}`).join(', ')}.</p></div>
       <label class="row" style="color:var(--muted);font-size:13px">Day <input type="date" id="eDate" value="${date}"></label></div>
-      <p class="hint">${existing.length ? `Already logged for ${esc(dayLabel(date, true))}. Changes overwrite it.` : `Nothing logged for ${esc(dayLabel(date, true))} yet.`} TikTok sales that day: <b style="color:var(--text)">${typeof dayRow?.Sales === 'number' ? money(dayRow.Sales) : 'not pulled yet'}</b></p>
+      <p class="hint">${existing.length ? `Already logged for ${esc(dayLabel(date, true))}. Changes overwrite it.` : `Nothing logged for ${esc(dayLabel(date, true))} yet.`} TikTok GMV that day: <b style="color:var(--text)">${gmvOf(dayRow) !== null ? money(gmvOf(dayRow)) : 'not pulled yet'}</b>${typeof dayRow?.GMV === 'number' && typeof dayRow?.Sales === 'number' ? ` <span>(item sales ${money(dayRow.Sales)})</span>` : ''} ${S.tiktok?.connected ? `<button class="btn" id="ePull" style="padding:3px 10px;font-size:13px;margin-left:6px">${gmvOf(dayRow) !== null ? 'Re-pull' : 'Pull'} from TikTok</button>` : ''}</p>
       <div class="row" style="margin-bottom:12px">
         <label>Shipping for the day<input type="number" min="0" step="0.01" id="dShip" value="${typeof dayRow?.Shipping === 'number' ? dayRow.Shipping : ''}" placeholder="0.00"></label>
-        <label>Fees for the day<input type="number" min="0" step="0.01" id="dFees" value="${typeof dayRow?.Fees === 'number' ? dayRow.Fees : ''}" placeholder="${typeof dayRow?.Sales === 'number' ? money(dayRow.Sales * feePct() / 100) + ' auto' : 'auto'}"></label>
-        <span class="hint" style="margin:0 0 8px">Leave fees blank to use ${feePct()}% of the day's sales.</span>
+        <label>Fees for the day<input type="number" min="0" step="0.01" id="dFees" value="${typeof dayRow?.Fees === 'number' ? dayRow.Fees : ''}" placeholder="${dayRow ? money(feeBaseOf(dayRow) * feePct() / 100) + ' auto' : 'auto'}"></label>
+        <span class="hint" style="margin:0 0 8px">Leave fees blank to use ${feePct()}% of the day's ${S.cfg.feeBase === 'sales' ? 'item sales' : 'GMV'}.</span>
       </div>
       <div class="scroll"><table class="entry" id="eTable"><thead><tr><th>Breaker</th>${S.cfg.products.map(p => `<th>${esc(p.name)}</th>`).join('')}<th>Helmets opened</th>${extras.map(c => `<th>${esc(c)}</th>`).join('')}<th>Box cost</th></tr></thead><tbody>
       ${names.map(n => { const b = existing.find(x => x.Breaker === n); return `<tr data-breaker="${esc(n)}" data-id="${esc(b?.id || '')}"><td><span class="who" style="background:${colorOf(n)}"></span>${esc(n)}</td>
@@ -326,6 +329,7 @@ function renderLog(){
   };
   totals();
   table.addEventListener('input', totals);
+  $('#ePull')?.addEventListener('click', e => pull(date, date, e.target));
   $('#eDate').onchange = e => { S.entryDate = e.target.value; renderLog(); };
   $$('tr[data-day]', v).forEach(tr => tr.onclick = () => { S.entryDate = tr.dataset.day; renderLog(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
   $('#eAdd').onclick = () => { const n = prompt('Breaker name:'); if (!n) return; S.cfg.breakers = [...new Set([...S.cfg.breakers, n.trim()])]; saveConfig(); renderLog(); };
@@ -373,7 +377,8 @@ function renderSetup(){
       <button class="btn" id="addProd">Add product</button>
     </section>
     <section><h2>Fees</h2><p class="hint">Used for any day where you haven't typed fees yourself.</p>
-      <div class="row"><label>Default fees, % of sales<input type="number" step="0.1" id="feePct" value="${feePct()}"></label></div>
+      <div class="row"><label>Default fees %<input type="number" step="0.1" id="feePct" value="${feePct()}"></label>
+        <label>Taken from<select id="feeBase" style="background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:var(--text)"><option value="gmv" ${S.cfg.feeBase !== 'sales' ? 'selected' : ''}>GMV (includes shipping)</option><option value="sales" ${S.cfg.feeBase === 'sales' ? 'selected' : ''}>Item sales only</option></select></label></div>
     </section>
     <section><h2>Breakers</h2><p class="hint">Each one gets a row on the Log a day tab.</p>
       <div class="row">${S.cfg.breakers.map((n, i) => `<span class="tag" style="font-size:14px;padding:4px 10px">${esc(n)} <button class="mini" data-rmb="${i}" aria-label="Remove ${esc(n)}">×</button></span>`).join('')}<button class="btn" id="addBr">Add breaker</button></div>
@@ -384,8 +389,8 @@ function renderSetup(){
         `<p class="hint">${tt.error ? esc(tt.error) : 'Connect once and each day’s sales total lands in Airtable automatically.'}</p><button class="btn gold" id="ttOn">Connect TikTok Shop</button>`}
       ${tt.scopes?.length ? `<p class="hint" style="margin-top:10px">Permissions on this login: ${tt.scopes.map(s => `<span class="tag">${esc(s)}</span>`).join(' ')}</p>` : ''}
     </section>
-    <section><h2>Set a day's sales by hand</h2><p class="hint">For days TikTok didn’t pull. Overwrites that day’s sales number.</p>
-      <div class="row"><label>Day<input type="date" id="mDate" value="${y}"></label><label>Sales<input type="number" step="0.01" id="mSales" placeholder="0.00"></label><button class="btn gold" id="mSave">Save sales</button></div>
+    <section><h2>Set a day's GMV by hand</h2><p class="hint">For days TikTok didn’t pull. Copy the GMV from Seller Center. Overwrites that day’s GMV.</p>
+      <div class="row"><label>Day<input type="date" id="mDate" value="${y}"></label><label>GMV<input type="number" step="0.01" id="mSales" placeholder="0.00"></label><button class="btn gold" id="mSave">Save GMV</button></div>
     </section>
     <section><h2>What counts as a cost</h2><p class="hint">Box cost, shipping and fees always count. Any other number column you add in Airtable is subtracted too, except helmets, box counts and orders. Untick any that aren’t costs.</p>
       <div style="display:flex;flex-wrap:wrap">${allNum.map(c => `<label class="check"><input type="checkbox" data-col="${esc(c)}" ${S.notCost.includes(c) ? '' : 'checked'}>${esc(c)}</label>`).join('')}</div>
@@ -395,6 +400,7 @@ function renderSetup(){
   $$('[data-p]', v).forEach(i => i.onchange = () => { const p = S.cfg.products[+i.dataset.p]; if (i.dataset.k === 'cost') p.cost = Number(i.value) || 0; else p.name = i.value.trim() || p.name; saveConfig(); toast('Saved'); });
   $$('[data-rmp]', v).forEach(b => b.onclick = () => { if (!confirm('Remove this product? Its Airtable column stays.')) return; S.cfg.products.splice(+b.dataset.rmp, 1); saveConfig(); renderSetup(); });
   $('#feePct').onchange = e => { S.cfg.feePct = Number(e.target.value) || 0; saveConfig(); toast(`Fees set to ${S.cfg.feePct}%`); };
+  $('#feeBase').onchange = e => { S.cfg.feeBase = e.target.value; saveConfig(); toast('Fees updated'); };
   $('#addProd').onclick = () => { const n = prompt('Product name (e.g. Riddell Minis):'); if (!n) return; const c = Number(prompt('Cost per box:', '0')) || 0; S.cfg.products.push({ name: n.trim(), field: `${n.trim()} Boxes`, cost: c }); saveConfig(); renderSetup(); toast(`Add a number column called “${n.trim()} Boxes” in Airtable`); };
   $$('[data-rmb]', v).forEach(b => b.onclick = () => { S.cfg.breakers.splice(+b.dataset.rmb, 1); saveConfig(); renderSetup(); });
   $('#addBr').onclick = () => { const n = prompt('Breaker name:'); if (!n) return; S.cfg.breakers = [...new Set([...S.cfg.breakers, n.trim()])]; saveConfig(); renderSetup(); };
@@ -404,7 +410,7 @@ function renderSetup(){
   $('#mSave').onclick = () => guarded(async () => {
     const date = $('#mDate').value, sales = $('#mSales').value;
     if (!date || sales === '') return toast('Pick a day and type the sales', true);
-    await req('days', { method: 'POST', body: JSON.stringify({ date, sales: Number(sales) }) });
+    await req('days', { method: 'POST', body: JSON.stringify({ date, fields: { GMV: Number(sales) } }) });
     toast(`Saved ${money(+sales)} for ${dayLabel(date, true)}`); $('#mSales').value = ''; await loadAll();
   });
   $$('[data-col]').forEach(c => c.onchange = () => {
@@ -418,10 +424,10 @@ async function pull(from, to, btn){
   if (btn){ btn.disabled = true; btn.textContent = 'Pulling…'; }
   await guarded(async () => {
     const r = await req('tiktok-sync', { method: 'POST', body: JSON.stringify(from ? { from, to } : {}) });
-    toast(r.days.length ? `Pulled ${r.days.map(d => `${dayLabel(d.Date)} ${money(d.Sales)}`).join(', ')}` : 'No sales found for those days');
+    toast(r.days.length ? `Pulled GMV: ${r.days.map(d => `${dayLabel(d.Date)} ${money(d.GMV)}`).join(', ')}` : 'No sales found for those days');
     S.tiktok.lastSync = new Date().toISOString(); await loadAll();
   });
-  if (btn){ btn.disabled = false; btn.textContent = from ? 'Pull these days' : 'Pull yesterday'; }
+  if (btn && btn.isConnected){ btn.disabled = false; btn.textContent = btn.id === 'pullR' ? 'Pull these days' : btn.id === 'pullY' ? 'Pull yesterday' : 'Pull from TikTok'; }
 }
 async function loadAll(){
   const [d, b, c] = await Promise.all([req('days'), req('breaks'), req('config').catch(() => ({}))]);
