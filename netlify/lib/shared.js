@@ -1,18 +1,21 @@
 const crypto = require('crypto');
 
-const SALES = process.env.AIRTABLE_SALES_TABLE || 'Sales';
+const DAYS = process.env.AIRTABLE_DAYS_TABLE || 'Days';
 const SETTINGS = process.env.AIRTABLE_SETTINGS_TABLE || 'Settings';
+const TZ = process.env.TZ_NAME || 'America/New_York';
 const TT_API = 'https://open-api.tiktokglobalshop.com';
 const TT_AUTH = 'https://auth.tiktok-shops.com';
+const SKIP = ['UNPAID', 'CANCELLED', 'ON_HOLD'];
 
 const json = (statusCode, body) => ({ statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const safeParse = s => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const authed = e => !!process.env.ADMIN_KEY && (e.headers['x-admin-key'] || e.headers['X-Admin-Key']) === process.env.ADMIN_KEY;
 
-function authed(event) {
-  const k = event.headers['x-admin-key'] || event.headers['X-Admin-Key'];
-  return !!process.env.ADMIN_KEY && k === process.env.ADMIN_KEY;
-}
+/* ---------- Dates in your time zone ---------- */
+const dayOf = ms => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+function addDays(ymd, n) { const d = new Date(ymd + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+const today = () => dayOf(Date.now());
 
 /* ---------- Airtable ---------- */
 async function at(path, opts = {}) {
@@ -25,12 +28,10 @@ async function at(path, opts = {}) {
   if (!r.ok) throw new Error(`Airtable ${r.status}: ${d.error?.message || d.error?.type || d.error || t}`);
   return d;
 }
-async function listAll(table, params = {}) {
+async function listAll(table) {
   const out = []; let offset;
   do {
-    const q = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) [].concat(v).forEach(x => q.append(k, x));
-    q.set('pageSize', '100');
+    const q = new URLSearchParams({ pageSize: '100' });
     if (offset) q.set('offset', offset);
     const d = await at(`${encodeURIComponent(table)}?${q}`);
     out.push(...d.records); offset = d.offset;
@@ -38,42 +39,16 @@ async function listAll(table, params = {}) {
   } while (offset);
   return out;
 }
-// Airtable allows 10 records per write and ~5 requests/sec
 async function inBatches(list, fn) {
-  const out = [];
-  for (let i = 0; i < list.length; i += 10) {
-    out.push(...(await fn(list.slice(i, i + 10))));
-    if (i + 10 < list.length) await sleep(210);
-  }
-  return out;
+  for (let i = 0; i < list.length; i += 10) { await fn(list.slice(i, i + 10)); if (i + 10 < list.length) await sleep(210); }
 }
-
-const F = { saleId: 'Sale ID', soldAt: 'Sold At', product: 'Product', item: 'Item', price: 'Price', shipCharged: 'Ship Charged', boxCost: 'Box Cost', shipCost: 'Ship Cost', fees: 'Fees', extras: 'Extras', notes: 'Notes', source: 'Source', buyer: 'Buyer', status: 'Status' };
-const NUM = ['price', 'shipCharged', 'boxCost', 'shipCost', 'fees'];
-
-function toFields(s) {
-  const f = {};
-  for (const [k, col] of Object.entries(F)) {
-    if (!(k in s)) continue;
-    let v = s[k];
-    if (k === 'extras') v = v && Object.keys(v).length ? JSON.stringify(v) : '';
-    else if (NUM.includes(k)) v = v === '' || v === null || v === undefined || isNaN(v) ? null : Number(v);
-    else v = v == null ? '' : String(v);
-    f[col] = v;
-  }
-  return f;
+// Writes only the fields you pass; your own columns are never touched
+async function upsertDays(rows) {
+  await inBatches(rows, c => at(encodeURIComponent(DAYS), {
+    method: 'PATCH',
+    body: JSON.stringify({ performUpsert: { fieldsToMergeOn: ['Date'] }, typecast: true, records: c.map(fields => ({ fields })) })
+  }));
 }
-function fromRecord(r) {
-  const f = r.fields, s = { id: r.id };
-  for (const [k, col] of Object.entries(F)) {
-    const v = f[col];
-    if (k === 'extras') s[k] = safeParse(v) || {};
-    else if (NUM.includes(k)) s[k] = v === undefined ? null : v;
-    else s[k] = v ?? '';
-  }
-  return s;
-}
-
 async function getKV(key) {
   const q = new URLSearchParams({ filterByFormula: `{Key}='${key}'`, maxRecords: '1' });
   const d = await at(`${encodeURIComponent(SETTINGS)}?${q}`);
@@ -91,17 +66,14 @@ async function setKV(key, value) {
 function ttSign(path, query, body) {
   const secret = process.env.TIKTOK_APP_SECRET;
   const keys = Object.keys(query).filter(k => k !== 'sign' && k !== 'access_token').sort();
-  const base = secret + path + keys.map(k => k + query[k]).join('') + (body || '') + secret;
-  return crypto.createHmac('sha256', secret).update(base).digest('hex');
+  return crypto.createHmac('sha256', secret).update(secret + path + keys.map(k => k + query[k]).join('') + (body || '') + secret).digest('hex');
 }
 async function ttCall(method, path, query, bodyObj, accessToken) {
   const q = { app_key: process.env.TIKTOK_APP_KEY, timestamp: String(Math.floor(Date.now() / 1000)), ...query };
   const body = bodyObj ? JSON.stringify(bodyObj) : '';
   q.sign = ttSign(path, q, body);
   const r = await fetch(`${TT_API}${path}?${new URLSearchParams(q)}`, {
-    method,
-    headers: { 'Content-Type': 'application/json', 'x-tts-access-token': accessToken },
-    body: bodyObj ? body : undefined
+    method, headers: { 'Content-Type': 'application/json', 'x-tts-access-token': accessToken }, body: bodyObj ? body : undefined
   });
   const d = await r.json();
   if (d.code !== 0) throw new Error(`TikTok ${d.code}: ${d.message}`);
@@ -116,14 +88,13 @@ async function ttTokenCall(path, params) {
 async function ttTokens() {
   const t = (await getKV('tiktok_tokens'))?.value;
   if (!t) throw new Error('TikTok is not connected');
+  if (!t.shopCipher) throw new Error('TikTok login saved but no shop linked. Connect again.');
   if (t.accessExpires * 1000 > Date.now() + 5 * 60 * 1000) return t;
   const d = await ttTokenCall('/api/v2/token/refresh', { refresh_token: t.refreshToken, grant_type: 'refresh_token' });
   const nt = { ...t, accessToken: d.access_token, accessExpires: d.access_token_expire_in, refreshToken: d.refresh_token, refreshExpires: d.refresh_token_expire_in };
   await setKV('tiktok_tokens', nt);
   return nt;
 }
-
-/* OAuth state: timestamp signed with ADMIN_KEY, so the callback can't be forged */
 const stateMake = () => { const ts = String(Date.now()); return `${ts}.${crypto.createHmac('sha256', process.env.ADMIN_KEY).update(ts).digest('hex').slice(0, 32)}`; };
 function stateOk(s) {
   const [ts, sig] = String(s || '').split('.');
@@ -132,4 +103,35 @@ function stateOk(s) {
   return sig.length === want.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want));
 }
 
-module.exports = { SALES, SETTINGS, json, authed, at, listAll, inBatches, toFields, fromRecord, getKV, setKV, ttCall, ttTokenCall, ttTokens, stateMake, stateOk, sleep };
+/* ---------- The sync: daily sales totals only ---------- */
+async function syncRange(from, to) {
+  const t = await ttTokens();
+  const now = Math.floor(Date.now() / 1000);
+  // Pull a little wider than the range, then bucket by your local day
+  const ge = Math.floor(Date.parse(from + 'T00:00:00Z') / 1000) - 15 * 3600;
+  const lt = Math.min(now, Math.floor(Date.parse(addDays(to, 1) + 'T00:00:00Z') / 1000) + 15 * 3600);
+  const orders = []; let pageToken = '';
+  do {
+    const q = { shop_cipher: t.shopCipher, page_size: '100' };
+    if (pageToken) q.page_token = pageToken;
+    const d = await ttCall('POST', '/order/202309/orders/search', q, { create_time_ge: ge, create_time_lt: lt }, t.accessToken);
+    orders.push(...(d.orders || []));
+    pageToken = d.next_page_token || '';
+  } while (pageToken && orders.length < 5000);
+
+  const totals = {};
+  for (const o of orders) {
+    if (SKIP.includes(o.status)) continue;
+    const day = dayOf(Number(o.create_time) * 1000);
+    if (day < from || day > to) continue;
+    const amt = Number(o.payment?.sub_total ?? o.payment?.total_amount ?? 0);
+    (totals[day] ||= { sales: 0, orders: 0 });
+    totals[day].sales += amt; totals[day].orders++;
+  }
+  const rows = Object.entries(totals).map(([d, v]) => ({ Date: d, Sales: Math.round(v.sales * 100) / 100, Orders: v.orders }));
+  await upsertDays(rows);
+  await setKV('tiktok_last_sync', new Date().toISOString());
+  return { from, to, orders: orders.length, days: rows };
+}
+
+module.exports = { DAYS, json, authed, at, listAll, upsertDays, getKV, setKV, ttCall, ttTokenCall, ttTokens, stateMake, stateOk, syncRange, today, addDays };
