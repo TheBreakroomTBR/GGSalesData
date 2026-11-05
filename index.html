@@ -207,7 +207,7 @@ function money(n, short){
 }
 const moneyAxis = n => (n < 0 ? '−' : '') + (S.settings.currency || '$') + Math.round(Math.abs(n)).toLocaleString();
 const pct = n => (isFinite(n) ? (n * 100).toFixed(1) : '0.0') + '%';
-function toast(msg, err){ const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', 2600); }
+function toast(msg, err){ const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', err ? 12000 : 2600); }
 function dayKey(iso){ const d = new Date(new Date(iso).getTime() - (Number(S.settings.dayStartHour) || 0) * 3600000); return ymd(d); }
 function dayLabel(k, withDow){ const d = new Date(k + 'T12:00:00'); return d.toLocaleDateString(undefined, withDow ? { weekday: 'short', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' }); }
 const timeLabel = iso => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
