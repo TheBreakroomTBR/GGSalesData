@@ -1,5 +1,5 @@
 const { DAYS, json, authed, listAll, upsertDays } = require('../lib/shared');
-const EDITABLE = ['Sales', 'Shipping', 'Fees'];
+const EDITABLE = ['Sales', 'GMV', 'Shipping', 'Fees'];
 
 exports.handler = async (event) => {
   if (!authed(event)) return json(401, { error: 'Unauthorized' });
