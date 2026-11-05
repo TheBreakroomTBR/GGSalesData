@@ -673,6 +673,7 @@ function renderSettings(){
     <section class="card"><h2>TikTok Shop</h2>
       ${S.mode !== 'api' ? `<p class="hint">TikTok sync needs the Netlify functions. Deploy this folder from GitHub to Netlify, then reload.</p>` :
       tt?.connected ? `<p class="hint">Connected to <b style="color:var(--text)">${esc(tt.shopName || 'your shop')}</b>.${tt.lastSync ? ` Last synced ${esc(new Date(tt.lastSync).toLocaleString())}.` : ''}</p>
+        <p class="hint">Permissions on this login: ${tt.scopes?.length ? tt.scopes.map(x => `<span class="tag" style="${x === 'seller.order.info' ? 'border-color:var(--gold);color:var(--gold)' : ''}">${esc(x)}</span>`).join(' ') : 'not recorded (connect again to see them)'}${tt.scopes?.length && !tt.scopes.includes('seller.order.info') ? ' <b class="neg">Order access is missing.</b>' : ''}</p>
         <div class="set">${num('tiktok.syncDays', 'Days to pull on each sync', '1')}</div>
         <p style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn gold" id="syncNow">Sync TikTok</button><button class="btn danger" id="ttOff">Disconnect</button></p>` :
       `<p class="hint">${tt?.error ? esc(tt.error) : 'Pull every order from your TikTok Shop in automatically, one row per box.'}</p><p><button class="btn gold" id="ttOn">Connect TikTok Shop</button></p>`}
