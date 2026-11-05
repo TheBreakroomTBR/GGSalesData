@@ -9,15 +9,23 @@ exports.handler = async (event) => {
     if (p.code) {
       if (!stateOk(p.state)) return back({ tiktok: 'error', msg: 'Connection link expired. Try Connect again.' });
       const d = await ttTokenCall('/api/v2/token/get', { auth_code: p.code, grant_type: 'authorized_code' });
-      const shops = await ttCall('GET', '/authorization/202309/shops', {}, null, d.access_token);
-      const shop = (shops.shops || [])[0];
-      if (!shop) return back({ tiktok: 'error', msg: 'No shop found on that TikTok account.' });
-      await setKV('tiktok_tokens', {
+      const scopes = d.granted_scopes || [];
+      const base = {
         accessToken: d.access_token, accessExpires: d.access_token_expire_in,
         refreshToken: d.refresh_token, refreshExpires: d.refresh_token_expire_in,
-        shopCipher: shop.cipher, shopId: shop.id, shopName: shop.name || d.seller_name || '',
-        scopes: d.granted_scopes || []
-      });
+        scopes, shopName: d.seller_name || ''
+      };
+      // Save the login first so we can see what TikTok granted even if the next step fails
+      await setKV('tiktok_tokens', base);
+      let shops;
+      try {
+        shops = await ttCall('GET', '/authorization/202309/shops', {}, null, d.access_token);
+      } catch (e) {
+        return back({ tiktok: 'error', msg: `Step 2 (shop list) failed: ${e.message.slice(0, 120)} | Permissions granted: ${scopes.join(', ') || 'NONE'}` });
+      }
+      const shop = (shops.shops || [])[0];
+      if (!shop) return back({ tiktok: 'error', msg: `No shop found on that TikTok account. Permissions granted: ${scopes.join(', ') || 'NONE'}` });
+      await setKV('tiktok_tokens', { ...base, shopCipher: shop.cipher, shopId: shop.id, shopName: shop.name || base.shopName });
       return back({ tiktok: 'connected' });
     }
 
@@ -27,6 +35,7 @@ exports.handler = async (event) => {
       const t = (await getKV('tiktok_tokens'))?.value;
       const last = (await getKV('tiktok_last_sync'))?.value;
       if (!t) return json(200, { connected: false });
+      if (!t.shopCipher) return json(200, { connected: false, scopes: t.scopes || [], error: `Login saved but no shop linked. Permissions granted: ${(t.scopes || []).join(', ') || 'NONE'}` });
       const alive = t.refreshExpires * 1000 > Date.now();
       return json(200, { connected: alive, shopName: t.shopName, scopes: t.scopes || [], lastSync: last, error: alive ? null : 'TikTok login expired. Connect again.' });
     }
@@ -42,7 +51,7 @@ exports.handler = async (event) => {
     }
     return json(400, { error: 'Unknown action' });
   } catch (e) {
-    if (p.code) return back({ tiktok: 'error', msg: e.message });
+    if (p.code) return back({ tiktok: 'error', msg: `Step 1 (login) failed: ${e.message}` });
     return json(500, { error: e.message });
   }
 };
