@@ -15,7 +15,8 @@ exports.handler = async (event) => {
       await setKV('tiktok_tokens', {
         accessToken: d.access_token, accessExpires: d.access_token_expire_in,
         refreshToken: d.refresh_token, refreshExpires: d.refresh_token_expire_in,
-        shopCipher: shop.cipher, shopId: shop.id, shopName: shop.name || d.seller_name || ''
+        shopCipher: shop.cipher, shopId: shop.id, shopName: shop.name || d.seller_name || '',
+        scopes: d.granted_scopes || []
       });
       return back({ tiktok: 'connected' });
     }
@@ -27,7 +28,7 @@ exports.handler = async (event) => {
       const last = (await getKV('tiktok_last_sync'))?.value;
       if (!t) return json(200, { connected: false });
       const alive = t.refreshExpires * 1000 > Date.now();
-      return json(200, { connected: alive, shopName: t.shopName, lastSync: last, error: alive ? null : 'TikTok login expired. Connect again.' });
+      return json(200, { connected: alive, shopName: t.shopName, scopes: t.scopes || [], lastSync: last, error: alive ? null : 'TikTok login expired. Connect again.' });
     }
     if (p.action === 'start') {
       if (!process.env.TIKTOK_APP_KEY || !process.env.TIKTOK_APP_SECRET) return json(400, { error: 'Set TIKTOK_APP_KEY and TIKTOK_APP_SECRET in Netlify first' });

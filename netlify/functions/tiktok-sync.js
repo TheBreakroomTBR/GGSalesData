@@ -8,6 +8,8 @@ exports.handler = async (event) => {
   try {
     const { days = 7 } = JSON.parse(event.body || '{}');
     const t = await ttTokens();
+    if (t.scopes && t.scopes.length && !t.scopes.includes('seller.order.info'))
+      return json(400, { error: `Your TikTok login doesn't include order access (seller.order.info). It has: ${t.scopes.join(', ') || 'none'}. Add Order Information in Partner Center, then Disconnect and Connect again.` });
     const now = Math.floor(Date.now() / 1000);
     const since = now - Math.min(Math.max(1, Number(days) || 7), 90) * 86400;
 
