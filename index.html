@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Helmet Live P/L</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700;800&family=Saira:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#130c28; --panel:#1c1240; --panel2:#251854; --brand:#2d1b69; --line:#3b2b7a;
+  --gold:#c9b800; --text:#f2edfb; --muted:#a99fcb; --loss:#ff7a6b;
+  --seg-cost:#5a45a8; --seg-fee:#8a76d6; --seg-ship:#b7a9ea; --seg-extra:#6f6390;
+  --cond:'Saira Condensed','Arial Narrow',sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:'Saira',system-ui,sans-serif;font-size:15px;line-height:1.45}
+body{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.wrap{max-width:1200px;margin:0 auto;padding:16px}
+header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:6px 0 14px;border-bottom:1px solid var(--line)}
+.brand h1{font-family:var(--cond);font-weight:800;font-size:30px;line-height:1;margin:0;letter-spacing:.01em}
+.brand .sub{color:var(--muted);font-size:13px}
+nav.tabs{display:flex;gap:4px;background:var(--panel);padding:4px;border-radius:999px}
+nav.tabs button{border:0;background:none;padding:7px 16px;border-radius:999px;cursor:pointer;font-family:var(--cond);font-weight:600;font-size:16px;color:var(--muted)}
+nav.tabs button[aria-selected=true]{background:var(--brand);color:var(--text)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0}
+.chipset{display:flex;flex-wrap:wrap;gap:4px}
+.chipset button{border:1px solid var(--line);background:none;border-radius:999px;padding:4px 12px;cursor:pointer;color:var(--muted);font-size:13px}
+.chipset button.on{border-color:var(--gold);color:var(--gold)}
+.btn{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:7px 14px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--muted)}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#1a1033;font-weight:600}
+.btn.ghost{background:none}
+.btn.danger{border-color:var(--loss);color:var(--loss);background:none}
+.btn:disabled{opacity:.5;cursor:default}
+input[type=text],input[type=number],input[type=date],input[type=datetime-local],input[type=password],select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0}
+input[type=color]{width:42px;height:34px;border:1px solid var(--line);border-radius:8px;background:none;padding:2px}
+.banner{background:var(--panel2);border-left:3px solid var(--gold);padding:10px 14px;border-radius:6px;margin-top:12px;font-size:14px}
+
+/* Scoreboard */
+.board{display:grid;grid-template-columns:1fr 1.3fr 1fr;background:#0c0720;border:2px solid var(--line);border-radius:16px;overflow:hidden;margin-top:6px}
+.board > div{padding:18px 20px;text-align:center;position:relative}
+.board > div + div{border-left:2px solid var(--line)}
+.board .lbl{font-family:var(--cond);font-weight:600;font-size:17px;color:var(--muted)}
+.board .num{font-family:var(--cond);font-weight:800;font-size:clamp(34px,6.2vw,76px);line-height:1.02;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.board .net{background:var(--brand)}
+.board .net .num{color:var(--gold)}
+.board .net .num.neg{color:var(--loss)}
+.board .foot{font-size:13px;color:var(--muted);margin-top:2px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:12px}
+.stats > div{background:var(--panel);padding:12px 14px}
+.stats .k{font-size:13px;color:var(--muted)}
+.stats .v{font-family:var(--cond);font-weight:700;font-size:26px;font-variant-numeric:tabular-nums;line-height:1.15}
+.stats .v small{font-family:'Saira';font-weight:400;font-size:12px;color:var(--muted);margin-left:4px}
+
+section.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px}
+section.card h2{font-family:var(--cond);font-weight:700;font-size:22px;margin:0 0 2px}
+section.card .hint{color:var(--muted);font-size:13px;margin:0 0 10px}
+.cardhead{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+svg.chart{width:100%;height:auto;display:block}
+svg.chart text{fill:var(--muted);font-size:11px;font-family:'Saira'}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 9px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:13px;position:sticky;top:0;background:var(--panel)}
+th:first-child,td:first-child,td.l,th.l{text-align:left}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--panel2)}
+tr.sel{background:var(--panel2)}
+.pos{color:var(--gold)} .neg{color:var(--loss)}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+
+/* Box ledger */
+.ledger{display:flex;flex-direction:column;gap:6px}
+.lrow{display:grid;grid-template-columns:120px 1fr 150px;gap:12px;align-items:center;font-size:14px;padding:4px 6px;border-radius:6px;cursor:pointer}
+.lrow:hover{background:var(--panel2)}
+.lrow .who{color:var(--muted);font-size:13px;line-height:1.2}
+.lrow .who b{color:var(--text);font-family:var(--cond);font-size:17px;font-weight:700}
+.stack{height:22px;display:flex;border-radius:4px;overflow:hidden;background:#0c0720}
+.stack span{height:100%}
+.lrow .amt{text-align:right;font-variant-numeric:tabular-nums;line-height:1.2}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin-bottom:10px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+/* Settings */
+.set{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 18px}
+.set label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.set label input,.set label select{color:var(--text)}
+.check{flex-direction:row!important;align-items:center;gap:8px!important;color:var(--text)!important;font-size:14px!important}
+.list{display:flex;flex-direction:column;gap:8px}
+.lrowset{display:grid;gap:8px;align-items:center}
+.prod-row{grid-template-columns:1.4fr 1.2fr .8fr 48px auto}
+.extra-row{grid-template-columns:1.6fr .8fr 1fr auto}
+.listhead{font-size:12px;color:var(--muted)}
+
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:0;width:min(560px,94vw)}
+dialog::backdrop{background:rgba(8,4,20,.7)}
+dialog form{padding:18px}
+dialog h3{font-family:var(--cond);font-size:24px;margin:0 0 12px}
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.formgrid label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.formgrid label.full{grid-column:1/-1}
+.formgrid input,.formgrid select,.formgrid textarea{color:var(--text)}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.actions .spacer{flex:1}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--gold);color:#1a1033;padding:10px 18px;border-radius:999px;font-weight:600;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.err{background:var(--loss)}
+.empty{text-align:center;padding:50px 20px}
+.empty h2{font-family:var(--cond);font-size:28px;margin:0 0 6px}
+.empty p{color:var(--muted);max-width:52ch;margin:0 auto 16px}
+.quick{display:grid;grid-template-columns:2fr 1fr 1.2fr auto;gap:8px;align-items:end}
+.quick label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.quick input,.quick select{color:var(--text)}
+@media (max-width:760px){
+  .board{grid-template-columns:1fr 1fr}
+  .board .net{grid-column:1/-1;order:-1}
+  .board > div + div{border-left:0}
+  .board > div:last-child{border-left:2px solid var(--line)}
+  .board .net{border-bottom:2px solid var(--line)}
+  .grid2,.formgrid,.quick{grid-template-columns:1fr}
+  .lrow{grid-template-columns:84px 1fr 96px;gap:8px}
+  .prod-row,.extra-row{grid-template-columns:1fr 1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1 id="bizName">Helmet Live</h1>
+      <div class="sub" id="modeLine">Profit &amp; loss</div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="dash" aria-selected="true">Dashboard</button>
+      <button role="tab" data-tab="sales" aria-selected="false">Sales</button>
+      <button role="tab" data-tab="settings" aria-selected="false">Settings</button>
+    </nav>
+  </header>
+  <div id="banner"></div>
+  <div class="bar" id="filters"></div>
+  <main id="view"></main>
+</div>
+
+<dialog id="saleDlg"><form method="dialog" id="saleForm"></form></dialog>
+<input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ============ State ============ */
+const API = '/.netlify/functions';
+const KEYK = 'pl_admin_key';
+const DEFAULTS = {
+  business: 'Helmet Live',
+  currency: '$',
+  dayStartHour: 6,
+  dailyGoal: 0,
+  accent: '#c9b800',
+  shippingRevenue: true,
+  defaultShipCost: 0,
+  defaultBoxCost: 0,
+  fees: { commissionPct: 8, processingPct: 0, fixedPerOrder: 0, onShipping: false },
+  products: [
+    { name: 'Gridiron Grail', match: 'grail', cost: 0, color: '#c9b800' },
+    { name: 'Pup Lids', match: 'pup', cost: 0, color: '#9b7bff' }
+  ],
+  extras: [ { name: 'Packaging', amount: 0, kind: 'flat' } ],
+  kpis: { revenue: true, profit: true, costs: true, boxes: true, avgSale: true, avgProfit: true, bestBox: true, feesPaid: true, goalDays: true },
+  sections: { daily: true, running: true, days: true, ledger: true, spread: true, products: true },
+  tiktok: { syncDays: 7 }
+};
+const S = {
+  mode: 'local', sales: [], rows: [], settings: clone(DEFAULTS),
+  tab: 'dash', filter: { range: '30d', from: '', to: '', product: 'all' },
+  chartMetric: 'profit', ledgerDay: null, search: '', tiktok: null
+};
+
+/* ============ Utils ============ */
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const isNum = v => v !== null && v !== undefined && v !== '' && !isNaN(v);
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+function deepMerge(base, over){
+  const out = clone(base);
+  if (!over || typeof over !== 'object') return out;
+  for (const k in over){
+    const b = base[k], o = over[k];
+    if (o && typeof o === 'object' && !Array.isArray(o) && b && typeof b === 'object' && !Array.isArray(b)) out[k] = deepMerge(b, o);
+    else out[k] = o;
+  }
+  return out;
+}
+function money(n, short){
+  const c = S.settings.currency || '$', v = Math.abs(n || 0);
+  const dec = short && v >= 1000 ? 0 : 2;
+  return (n < 0 ? '−' : '') + c + v.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+const moneyAxis = n => (n < 0 ? '−' : '') + (S.settings.currency || '$') + Math.round(Math.abs(n)).toLocaleString();
+const pct = n => (isFinite(n) ? (n * 100).toFixed(1) : '0.0') + '%';
+function toast(msg, err){ const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', 2600); }
+function dayKey(iso){ const d = new Date(new Date(iso).getTime() - (Number(S.settings.dayStartHour) || 0) * 3600000); return ymd(d); }
+function dayLabel(k, withDow){ const d = new Date(k + 'T12:00:00'); return d.toLocaleDateString(undefined, withDow ? { weekday: 'short', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' }); }
+const timeLabel = iso => new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+function toLocalInput(iso){ const d = iso ? new Date(iso) : new Date(); return `${ymd(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+const fromLocalInput = v => v ? new Date(v).toISOString() : new Date().toISOString();
+function getPath(o, p){ return p.split('.').reduce((a, k) => a?.[k], o); }
+function setPath(o, p, v){ const ks = p.split('.'); const last = ks.pop(); const t = ks.reduce((a, k) => (a[k] ??= {}), o); t[last] = v; }
+
+/* ============ Storage layer (Airtable via Netlify, or this browser) ============ */
+const Local = {
+  get(k, d){ try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+async function req(fn, opts = {}){
+  const r = await fetch(`${API}/${fn}`, { ...opts, headers: { 'Content-Type': 'application/json', 'x-admin-key': Local.get(KEYK, ''), ...(opts.headers || {}) } });
+  const text = await r.text();
+  let d; try { d = text ? JSON.parse(text) : {}; } catch { const e = new Error('no-backend'); e.noBackend = true; throw e; }
+  if (r.status === 401){ const e = new Error('Admin key is wrong or missing'); e.unauth = true; throw e; }
+  if (!r.ok) throw new Error(d.error || `Request failed (${r.status})`);
+  return d;
+}
+const Store = {
+  async init(){
+    if (location.protocol === 'file:'){ S.mode = 'local'; return; }
+    try {
+      const d = await req('settings');
+      S.mode = 'api';
+      S.settings = deepMerge(DEFAULTS, d.config);
+    } catch (e){
+      if (e.unauth){ S.mode = 'api'; askKey(); return this.init(); }
+      S.mode = 'local';
+    }
+    if (S.mode === 'local') S.settings = deepMerge(DEFAULTS, Local.get('pl_settings', null));
+  },
+  async list(){
+    if (S.mode === 'local') return Local.get('pl_sales', []);
+    return (await req('sales')).records;
+  },
+  async create(list){
+    if (S.mode === 'local'){
+      const all = Local.get('pl_sales', []);
+      const made = list.map(s => ({ ...s, id: 'loc_' + Math.random().toString(36).slice(2, 10) }));
+      Local.set('pl_sales', all.concat(made)); return made;
+    }
+    return (await req('sales', { method: 'POST', body: JSON.stringify({ records: list }) })).records;
+  },
+  async update(list){
+    if (S.mode === 'local'){
+      const all = Local.get('pl_sales', []);
+      list.forEach(u => { const i = all.findIndex(s => s.id === u.id); if (i > -1) all[i] = { ...all[i], ...u }; });
+      Local.set('pl_sales', all); return list;
+    }
+    return (await req('sales', { method: 'PATCH', body: JSON.stringify({ records: list }) })).records;
+  },
+  async remove(ids){
+    if (S.mode === 'local'){ Local.set('pl_sales', Local.get('pl_sales', []).filter(s => !ids.includes(s.id))); return; }
+    await req('sales', { method: 'DELETE', body: JSON.stringify({ ids }) });
+  },
+  async saveSettings(){
+    if (S.mode === 'local'){ Local.set('pl_settings', S.settings); return; }
+    await req('settings', { method: 'PUT', body: JSON.stringify(S.settings) });
+  }
+};
+function askKey(silentIfCancel){
+  const k = prompt('Enter your admin key (the ADMIN_KEY you set in Netlify). Cancel to use this browser only.');
+  if (k) Local.set(KEYK, k.trim());
+  else if (!silentIfCancel) throw new Error('No admin key');
+}
+
+/* ============ Profit math ============ */
+function productOf(s){
+  const P = S.settings.products || [];
+  if (s.product){ const p = P.find(p => p.name === s.product); if (p) return p; }
+  const hay = `${s.item || ''} ${s.product || ''}`.toLowerCase();
+  return P.find(p => p.match && hay.includes(String(p.match).toLowerCase())) || null;
+}
+function feeCalc(price, ship){
+  const f = S.settings.fees;
+  const base = price + (f.onShipping ? ship : 0);
+  return base * ((+f.commissionPct || 0) + (+f.processingPct || 0)) / 100 + (+f.fixedPerOrder || 0);
+}
+function calc(s){
+  const st = S.settings, p = productOf(s);
+  const price = +s.price || 0, ship = +s.shipCharged || 0;
+  const rev = price + (st.shippingRevenue ? ship : 0);
+  const fees = isNum(s.fees) ? +s.fees : feeCalc(price, ship);
+  const cost = isNum(s.boxCost) ? +s.boxCost : (p && isNum(p.cost) ? +p.cost : +st.defaultBoxCost || 0);
+  const shipCost = isNum(s.shipCost) ? +s.shipCost : +st.defaultShipCost || 0;
+  let extra = 0;
+  (st.extras || []).forEach(x => {
+    const ov = s.extras && isNum(s.extras[x.name]) ? +s.extras[x.name] : null;
+    extra += ov !== null ? ov : (x.kind === 'pct' ? price * (+x.amount || 0) / 100 : +x.amount || 0);
+  });
+  return { price, rev, fees, cost, shipCost, extra, profit: rev - fees - cost - shipCost - extra, prod: p ? p.name : (s.product || 'Unassigned'), color: p?.color };
+}
+function enrich(){
+  S.rows = S.sales.filter(s => s.soldAt).map(s => ({ ...s, ...calc(s), day: dayKey(s.soldAt) }))
+    .sort((a, b) => a.soldAt.localeCompare(b.soldAt));
+  const n = {}; S.rows.forEach(r => r.box = (n[r.day] = (n[r.day] || 0) + 1));
+}
+function bounds(){
+  const today = dayKey(new Date().toISOString());
+  const back = k => { const d = new Date(today + 'T12:00:00'); d.setDate(d.getDate() - k); return ymd(d); };
+  switch (S.filter.range){
+    case 'today': return [today, today];
+    case '7d': return [back(6), today];
+    case '30d': return [back(29), today];
+    case 'month': return [today.slice(0, 8) + '01', today];
+    case 'custom': return [S.filter.from || '0000-00-00', S.filter.to || '9999-12-31'];
+    default: return [S.rows[0]?.day || today, today];
+  }
+}
+function filtered(){
+  const [a, b] = bounds(), pf = S.filter.product;
+  return S.rows.filter(r => r.day >= a && r.day <= b && (pf === 'all' || r.prod === pf));
+}
+function agg(rows){
+  const a = { boxes: rows.length, rev: 0, price: 0, fees: 0, cost: 0, ship: 0, extra: 0, profit: 0, best: null };
+  rows.forEach(r => { a.rev += r.rev; a.price += r.price; a.fees += r.fees; a.cost += r.cost; a.ship += r.shipCost; a.extra += r.extra; a.profit += r.profit; if (!a.best || r.price > a.best.price) a.best = r; });
+  a.costs = a.fees + a.cost + a.ship + a.extra;
+  return a;
+}
+function byDay(rows, fill){
+  const m = {}; rows.forEach(r => (m[r.day] ||= []).push(r));
+  let keys = Object.keys(m).sort();
+  if (fill && keys.length){
+    const [a, b] = bounds(); let start = a < keys[0] && S.filter.range !== 'all' ? a : keys[0];
+    const end = b > keys[keys.length - 1] ? b : keys[keys.length - 1];
+    keys = []; for (let d = new Date(start + 'T12:00:00'); ymd(d) <= end && keys.length < 400; d.setDate(d.getDate() + 1)) keys.push(ymd(d));
+  }
+  return keys.map(k => ({ day: k, rows: m[k] || [], ...agg(m[k] || []) }));
+}
+
+/* ============ Charts (plain SVG) ============ */
+function barChart(points, opts = {}){
+  const W = 820, H = 240, L = 56, R = 10, T = 12, B = 30;
+  if (!points.length) return '';
+  const vals = points.map(p => p.v), goal = opts.goal || 0;
+  let max = Math.max(0, ...vals, goal), min = Math.min(0, ...vals);
+  if (max === min) max = min + 1;
+  const y = v => T + (max - v) / (max - min) * (H - T - B);
+  const bw = (W - L - R) / points.length, gap = Math.min(6, bw * .25);
+  const ticks = 4, step = (max - min) / ticks;
+  let g = '';
+  for (let i = 0; i <= ticks; i++){ const v = min + step * i; g += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="${v === 0 ? 1.4 : .6}"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${esc((opts.axis || opts.fmt)(v, true))}</text>`; }
+  const every = Math.ceil(points.length / 12);
+  points.forEach((p, i) => {
+    const x = L + i * bw + gap / 2, h = Math.abs(y(p.v) - y(0)), top = Math.min(y(p.v), y(0));
+    g += `<rect x="${x}" y="${top}" width="${Math.max(1, bw - gap)}" height="${Math.max(p.v ? 1 : 0, h)}" rx="2" fill="${p.v < 0 ? 'var(--loss)' : (opts.color || 'var(--gold)')}"><title>${esc(p.title || p.label)}: ${esc(opts.fmt(p.v))}</title></rect>`;
+    if (i % every === 0) g += `<text x="${x + (bw - gap) / 2}" y="${H - 10}" text-anchor="middle">${esc(p.label)}</text>`;
+  });
+  if (goal > 0) g += `<line x1="${L}" x2="${W-R}" y1="${y(goal)}" y2="${y(goal)}" stroke="var(--text)" stroke-dasharray="5 4" stroke-width="1"/><text x="${W-R}" y="${y(goal)-5}" text-anchor="end" style="fill:var(--text)">Goal ${esc(opts.fmt(goal, true))}</text>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria || 'Chart')}">${g}</svg>`;
+}
+function lineChart(labels, series, opts = {}){
+  const W = 820, H = 240, L = 56, R = 10, T = 12, B = 30;
+  if (labels.length < 1) return '';
+  const all = series.flatMap(s => s.values);
+  let max = Math.max(0, ...all), min = Math.min(0, ...all); if (max === min) max = min + 1;
+  const y = v => T + (max - v) / (max - min) * (H - T - B);
+  const x = i => L + (labels.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (labels.length - 1));
+  let g = '';
+  for (let i = 0; i <= 4; i++){ const v = min + (max - min) / 4 * i; g += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="${v === 0 ? 1.4 : .6}"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end">${esc(moneyAxis(v))}</text>`; }
+  const every = Math.ceil(labels.length / 10);
+  labels.forEach((l, i) => { if (i % every === 0) g += `<text x="${x(i)}" y="${H-10}" text-anchor="middle">${esc(l)}</text>`; });
+  series.forEach(s => {
+    const d = s.values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+    g += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    const li = s.values.length - 1;
+    g += `<circle cx="${x(li)}" cy="${y(s.values[li])}" r="4" fill="${s.color}"><title>${esc(s.name)}: ${esc(money(s.values[li]))}</title></circle>`;
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.aria || 'Trend')}">${g}</svg>`;
+}
+
+/* ============ Filters bar ============ */
+function renderFilters(){
+  const el = $('#filters');
+  if (S.tab === 'settings'){ el.innerHTML = ''; return; }
+  const ranges = [['today','Today'],['7d','7 days'],['30d','30 days'],['month','This month'],['all','All time'],['custom','Custom']];
+  const prods = ['all', ...new Set([...(S.settings.products || []).map(p => p.name), ...S.rows.map(r => r.prod)])];
+  el.innerHTML = `
+    <div class="chipset" role="group" aria-label="Date range">${ranges.map(([k, l]) => `<button data-range="${k}" class="${S.filter.range === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    ${S.filter.range === 'custom' ? `<input type="date" id="fFrom" value="${esc(S.filter.from)}" aria-label="From"><input type="date" id="fTo" value="${esc(S.filter.to)}" aria-label="To">` : ''}
+    <select id="fProd" aria-label="Product">${prods.map(p => `<option value="${esc(p)}" ${S.filter.product === p ? 'selected' : ''}>${p === 'all' ? 'All products' : esc(p)}</option>`).join('')}</select>
+    <span style="flex:1"></span>
+    ${S.mode === 'api' && S.tiktok?.connected ? `<button class="btn" id="syncBtn">Sync TikTok</button>` : ''}`;
+  $$('[data-range]', el).forEach(b => b.onclick = () => { S.filter.range = b.dataset.range; render(); });
+  $('#fFrom', el)?.addEventListener('change', e => { S.filter.from = e.target.value; render(); });
+  $('#fTo', el)?.addEventListener('change', e => { S.filter.to = e.target.value; render(); });
+  $('#fProd', el).onchange = e => { S.filter.product = e.target.value; render(); };
+  $('#syncBtn', el)?.addEventListener('click', syncTikTok);
+}
+
+/* ============ Dashboard ============ */
+function renderDash(){
+  const v = $('#view');
+  if (!S.sales.length){
+    v.innerHTML = `<div class="empty"><h2>No boxes logged yet</h2>
+      <p>${S.mode === 'api' ? 'Connect TikTok in Settings and sync, or log your first boxes on the Sales tab.' : 'Log boxes on the Sales tab, or load sample data to see how the dashboard reads.'}</p>
+      <button class="btn gold" data-go="sales">Log boxes</button> ${S.mode === 'local' ? '<button class="btn" id="sample">Load sample data</button>' : ''}</div>`;
+    $('[data-go]', v).onclick = () => setTab('sales');
+    $('#sample', v)?.addEventListener('click', loadSample);
+    return;
+  }
+  const rows = filtered(), a = agg(rows), K = S.settings.kpis, X = S.settings.sections;
+  const days = byDay(rows, true), active = days.filter(d => d.boxes);
+  const goal = +S.settings.dailyGoal || 0;
+  const margin = a.rev ? a.profit / a.rev : 0;
+
+  const boardCells = [];
+  if (K.revenue) boardCells.push(`<div><div class="lbl">Sales</div><div class="num">${money(a.rev, true)}</div><div class="foot">${a.boxes} boxes</div></div>`);
+  if (K.profit) boardCells.push(`<div class="net"><div class="lbl">Net profit</div><div class="num ${a.profit < 0 ? 'neg' : ''}">${money(a.profit, true)}</div><div class="foot">${pct(margin)} margin</div></div>`);
+  if (K.costs) boardCells.push(`<div><div class="lbl">Costs</div><div class="num">${money(a.costs, true)}</div><div class="foot">boxes, fees, shipping</div></div>`);
+
+  const stats = [];
+  if (K.boxes) stats.push(['Boxes sold', a.boxes, active.length ? `${(a.boxes / active.length).toFixed(1)}/day` : '']);
+  if (K.avgSale) stats.push(['Avg sale per box', money(a.boxes ? a.price / a.boxes : 0), '']);
+  if (K.avgProfit) stats.push(['Avg profit per box', `<span class="${a.profit < 0 ? 'neg' : 'pos'}">${money(a.boxes ? a.profit / a.boxes : 0)}</span>`, '']);
+  if (K.bestBox && a.best) stats.push(['Best box', money(a.best.price), dayLabel(a.best.day)]);
+  if (K.feesPaid) stats.push(['Fees paid', money(a.fees), a.rev ? pct(a.fees / a.rev) : '']);
+  if (K.goalDays && goal) stats.push(['Days at goal', `${active.filter(d => d.profit >= goal).length}/${active.length}`, `goal ${money(goal, true)}`]);
+
+  const metrics = { profit: ['Profit', d => d.profit, money], rev: ['Sales', d => d.rev, money], boxes: ['Boxes', d => d.boxes, (n) => String(Math.round(n))], avg: ['Avg per box', d => d.boxes ? d.price / d.boxes : 0, money] };
+  const [mName, mFn, mFmt] = metrics[S.chartMetric];
+
+  let cum = 0, cumP = 0; const cR = [], cP = [];
+  days.forEach(d => { cum += d.rev; cumP += d.profit; cR.push(cum); cP.push(cumP); });
+
+  if (!S.ledgerDay || !active.find(d => d.day === S.ledgerDay)) S.ledgerDay = active[active.length - 1]?.day || null;
+  const ld = active.find(d => d.day === S.ledgerDay);
+
+  v.innerHTML = `
+    ${boardCells.length ? `<div class="board" style="grid-template-columns:${boardCells.length === 3 ? '1fr 1.3fr 1fr' : `repeat(${boardCells.length},1fr)`}">${boardCells.join('')}</div>` : ''}
+    ${stats.length ? `<div class="stats">${stats.map(([k, val, s]) => `<div><div class="k">${k}</div><div class="v">${val}${s ? `<small>${esc(s)}</small>` : ''}</div></div>`).join('')}</div>` : ''}
+    ${!rows.length ? `<div class="banner">No boxes in this range. Pick a wider range above.</div>` : ''}
+
+    ${X.daily && rows.length ? `<section class="card"><div class="cardhead"><div><h2>Day by day</h2><p class="hint">${mName} for each stream day${goal && S.chartMetric === 'profit' ? ', against your daily goal' : ''}.</p></div>
+      <div class="chipset">${Object.entries(metrics).map(([k, [n]]) => `<button data-metric="${k}" class="${S.chartMetric === k ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+      ${barChart(days.map(d => ({ label: dayLabel(d.day), title: dayLabel(d.day, true), v: mFn(d) })), { fmt: mFmt, axis: S.chartMetric === 'boxes' ? null : moneyAxis, goal: S.chartMetric === 'profit' ? goal : 0, aria: mName + ' by day' })}</section>` : ''}
+
+    ${X.running && rows.length ? `<section class="card"><h2>Running total</h2><p class="hint"><span class="dot" style="background:var(--muted)"></span>Sales <span class="dot" style="background:var(--gold);margin-left:12px"></span>Profit, added up across the range.</p>
+      ${lineChart(days.map(d => dayLabel(d.day)), [{ name: 'Sales', values: cR, color: 'var(--muted)' }, { name: 'Profit', values: cP, color: 'var(--gold)' }], { aria: 'Running sales and profit' })}</section>` : ''}
+
+    ${X.ledger && ld ? `<section class="card"><div class="cardhead"><div><h2>Every box, ${esc(dayLabel(ld.day, true))}</h2><p class="hint">Where each box's sale went. Click a box to edit its costs.</p></div>
+      <select id="ledgerDay" aria-label="Day">${active.slice().reverse().map(d => `<option value="${d.day}" ${d.day === ld.day ? 'selected' : ''}>${esc(dayLabel(d.day, true))} (${d.boxes})</option>`).join('')}</select></div>
+      <div class="legend"><span><i style="background:var(--seg-cost)"></i>Box cost</span><span><i style="background:var(--seg-fee)"></i>Fees</span><span><i style="background:var(--seg-ship)"></i>Shipping</span><span><i style="background:var(--seg-extra)"></i>Extras</span><span><i style="background:var(--gold)"></i>Profit</span></div>
+      ${ledger(ld.rows)}</section>` : ''}
+
+    <div class="grid2">
+      ${X.days && active.length ? `<section class="card" style="margin-top:14px"><h2>Stream days</h2><p class="hint">Click a day to see its boxes.</p><div class="scroll" style="max-height:420px">
+        <table><thead><tr><th>Day</th><th>Boxes</th><th>Sales</th><th>Avg/box</th><th>Profit</th></tr></thead><tbody>
+        ${active.slice().reverse().map(d => `<tr data-day="${d.day}" class="${d.day === S.ledgerDay ? 'sel' : ''}"><td>${esc(dayLabel(d.day, true))}</td><td>${d.boxes}</td><td>${money(d.rev)}</td><td>${money(d.price / d.boxes)}</td><td class="${d.profit < 0 ? 'neg' : 'pos'}">${money(d.profit)}</td></tr>`).join('')}
+        </tbody></table></div></section>` : ''}
+      ${X.spread && rows.length ? `<section class="card" style="margin-top:14px"><h2>What boxes sell for</h2><p class="hint">How many boxes landed in each price band.</p>${histogram(rows)}</section>` : ''}
+    </div>
+    ${X.products && rows.length ? productTable(rows) : ''}`;
+
+  $$('[data-metric]', v).forEach(b => b.onclick = () => { S.chartMetric = b.dataset.metric; renderDash(); });
+  $('#ledgerDay', v)?.addEventListener('change', e => { S.ledgerDay = e.target.value; renderDash(); });
+  $$('tr[data-day]', v).forEach(tr => tr.onclick = () => { S.ledgerDay = tr.dataset.day; renderDash(); $('#ledgerDay')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+  $$('[data-edit]', v).forEach(el => el.onclick = () => openSale(el.dataset.edit));
+}
+function ledger(rows){
+  const max = Math.max(...rows.map(r => Math.max(r.rev, r.fees + r.cost + r.shipCost + r.extra)), 1);
+  return `<div class="ledger">${rows.map(r => {
+    const w = v => (Math.max(0, v) / max * 100).toFixed(2) + '%';
+    return `<div class="lrow" data-edit="${esc(r.id)}" title="Edit box ${r.box}">
+      <div class="who"><b>Box ${r.box}</b><br>${esc(timeLabel(r.soldAt))}${r.prod !== 'Unassigned' ? ' ' + esc(r.prod) : ''}</div>
+      <div class="stack" aria-label="Sale ${money(r.rev)}, profit ${money(r.profit)}">
+        <span style="width:${w(r.cost)};background:var(--seg-cost)"></span><span style="width:${w(r.fees)};background:var(--seg-fee)"></span><span style="width:${w(r.shipCost)};background:var(--seg-ship)"></span><span style="width:${w(r.extra)};background:var(--seg-extra)"></span><span style="width:${w(r.profit)};background:var(--gold)"></span>
+      </div>
+      <div class="amt">${money(r.rev)}<br><span class="${r.profit < 0 ? 'neg' : 'pos'}">${r.profit < 0 ? '' : '+'}${money(r.profit)}</span></div></div>`;
+  }).join('')}</div>`;
+}
+function histogram(rows){
+  const max = Math.max(...rows.map(r => r.price), 1);
+  const steps = [5, 10, 20, 25, 50, 100, 250, 500, 1000];
+  const step = steps.find(s => max / s <= 10) || 1000;
+  const n = Math.floor(max / step) + 1, b = Array(n).fill(0);
+  rows.forEach(r => b[Math.min(n - 1, Math.floor(r.price / step))]++);
+  const c = S.settings.currency;
+  return barChart(b.map((v, i) => ({ label: `${c}${i * step}`, title: `${c}${i * step}–${c}${(i + 1) * step - 1}`, v })), { fmt: (n) => `${Math.round(n)} boxes`, axis: n => String(Math.round(n)), color: 'var(--seg-fee)', aria: 'Boxes by price band' });
+}
+function productTable(rows){
+  const m = {}; rows.forEach(r => (m[r.prod] ||= []).push(r));
+  const list = Object.entries(m).map(([k, rs]) => ({ k, color: rs[0].color, ...agg(rs) })).sort((a, b) => b.rev - a.rev);
+  if (list.length < 2) return '';
+  return `<section class="card"><h2>By product</h2><p class="hint">How each helmet line is pulling its weight.</p><div class="scroll"><table><thead><tr><th>Product</th><th>Boxes</th><th>Sales</th><th>Avg sale</th><th>Avg profit</th><th>Profit</th><th>Margin</th></tr></thead><tbody>
+    ${list.map(p => `<tr style="cursor:default"><td><span class="dot" style="background:${esc(p.color || 'var(--muted)')}"></span>${esc(p.k)}</td><td>${p.boxes}</td><td>${money(p.rev)}</td><td>${money(p.price / p.boxes)}</td><td>${money(p.profit / p.boxes)}</td><td class="${p.profit < 0 ? 'neg' : 'pos'}">${money(p.profit)}</td><td>${pct(p.rev ? p.profit / p.rev : 0)}</td></tr>`).join('')}
+  </tbody></table></div></section>`;
+}
+
+/* ============ Sales tab ============ */
+function renderSales(){
+  const v = $('#view');
+  const q = S.search.toLowerCase();
+  const rows = filtered().filter(r => !q || `${r.item} ${r.prod} ${r.buyer} ${r.notes}`.toLowerCase().includes(q)).slice().reverse();
+  const P = S.settings.products || [];
+  v.innerHTML = `
+    <section class="card" style="margin-top:0"><h2>Log boxes fast</h2><p class="hint">Type each box's sale price with spaces between, like <b>45 60 38 120</b>. Costs fill in from Settings.</p>
+      <div class="quick">
+        <label>Sale prices<input type="text" id="qPrices" inputmode="decimal" placeholder="45 60 38 120"></label>
+        <label>Product<select id="qProd"><option value="">Unassigned</option>${P.map(p => `<option>${esc(p.name)}</option>`).join('')}</select></label>
+        <label>Sold at<input type="datetime-local" id="qWhen" value="${toLocalInput()}"></label>
+        <button class="btn gold" id="qAdd">Log boxes</button>
+      </div></section>
+    <section class="card"><div class="cardhead"><div><h2>Sales</h2><p class="hint">${rows.length} boxes in this range. Click a row to edit.</p></div>
+      <div class="bar" style="margin:0"><input type="text" id="sSearch" placeholder="Search item, buyer, notes" value="${esc(S.search)}">
+      <button class="btn" id="addOne">Add one sale</button><button class="btn ghost" id="impCsv">Import CSV</button><button class="btn ghost" id="expCsv">Export CSV</button></div></div>
+      <div class="scroll" style="max-height:640px"><table><thead><tr><th>Sold</th><th>Box</th><th class="l">Product</th><th class="l">Item</th><th>Price</th><th>Box cost</th><th>Fees</th><th>Ship</th><th>Profit</th><th class="l">Source</th></tr></thead><tbody>
+      ${rows.map(r => `<tr data-edit="${esc(r.id)}"><td>${esc(dayLabel(r.day))} ${esc(timeLabel(r.soldAt))}</td><td>${r.box}</td><td class="l">${r.color ? `<span class="dot" style="background:${esc(r.color)}"></span>` : ''}${esc(r.prod)}</td><td class="l" style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${esc(r.item)}</td><td>${money(r.price)}</td><td>${money(r.cost)}</td><td>${money(r.fees)}</td><td>${money(r.shipCost)}</td><td class="${r.profit < 0 ? 'neg' : 'pos'}">${money(r.profit)}</td><td class="l"><span class="tag">${esc(r.source || 'manual')}</span></td></tr>`).join('') || `<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">No boxes in this range.</td></tr>`}
+      </tbody></table></div></section>`;
+  $('#qAdd').onclick = quickAdd;
+  $('#qPrices').onkeydown = e => { if (e.key === 'Enter') quickAdd(); };
+  $('#sSearch').oninput = e => { S.search = e.target.value; const pos = e.target.selectionStart; renderSales(); const i = $('#sSearch'); i.focus(); i.setSelectionRange(pos, pos); };
+  $('#addOne').onclick = () => openSale(null);
+  $('#impCsv').onclick = () => $('#csvFile').click();
+  $('#expCsv').onclick = exportCsv;
+  $$('[data-edit]', v).forEach(tr => tr.onclick = () => openSale(tr.dataset.edit));
+}
+async function quickAdd(){
+  const prices = $('#qPrices').value.split(/[\s,]+/).map(s => s.replace(/[^0-9.\-]/g, '')).filter(isNum).map(Number);
+  if (!prices.length) return toast('Type at least one price', true);
+  const t0 = new Date(fromLocalInput($('#qWhen').value)).getTime();
+  const product = $('#qProd').value;
+  const list = prices.map((p, i) => ({ saleId: 'M-' + Date.now().toString(36) + '-' + i, soldAt: new Date(t0 + i * 1000).toISOString(), price: p, product, item: '', source: 'manual', extras: {} }));
+  await guarded(async () => { const made = await Store.create(list); S.sales.push(...made); toast(`Logged ${made.length} box${made.length > 1 ? 'es' : ''}`); refresh(); });
+}
+function openSale(id){
+  const s = id ? S.sales.find(x => x.id === id) : { soldAt: new Date().toISOString(), price: '', product: '', extras: {}, source: 'manual' };
+  if (!s) return;
+  const P = S.settings.products || [], st = S.settings, p = productOf(s);
+  const c = calc(s);
+  const f = $('#saleForm');
+  const val = v => isNum(v) ? v : '';
+  f.innerHTML = `<h3>${id ? 'Edit box' : 'Add a sale'}</h3>
+    <div class="formgrid">
+      <label>Sold at<input type="datetime-local" name="soldAt" value="${toLocalInput(s.soldAt)}"></label>
+      <label>Product<select name="product"><option value="">Unassigned</option>${P.map(x => `<option ${s.product === x.name || (!s.product && p?.name === x.name) ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}${s.product && !P.find(x => x.name === s.product) ? `<option selected>${esc(s.product)}</option>` : ''}</select></label>
+      <label class="full">Item<input type="text" name="item" value="${esc(s.item)}" placeholder="e.g. Mystery helmet box"></label>
+      <label>Sale price<input type="number" step="0.01" name="price" value="${val(s.price)}" required></label>
+      <label>Shipping charged to buyer<input type="number" step="0.01" name="shipCharged" value="${val(s.shipCharged)}" placeholder="0.00"></label>
+      <label>Box cost<input type="number" step="0.01" name="boxCost" value="${val(s.boxCost)}" placeholder="${money(p && isNum(p.cost) ? +p.cost : +st.defaultBoxCost || 0)} default"></label>
+      <label>Fees<input type="number" step="0.01" name="fees" value="${val(s.fees)}" placeholder="${money(feeCalc(+s.price || 0, +s.shipCharged || 0))} auto"></label>
+      <label>Your shipping cost<input type="number" step="0.01" name="shipCost" value="${val(s.shipCost)}" placeholder="${money(+st.defaultShipCost || 0)} default"></label>
+      ${(st.extras || []).map(x => `<label>${esc(x.name)}<input type="number" step="0.01" data-extra="${esc(x.name)}" value="${val(s.extras?.[x.name])}" placeholder="${x.kind === 'pct' ? x.amount + '% of sale' : money(+x.amount || 0) + ' default'}"></label>`).join('')}
+      <label>Buyer<input type="text" name="buyer" value="${esc(s.buyer)}"></label>
+      <label class="full">Notes<textarea name="notes" rows="2">${esc(s.notes)}</textarea></label>
+    </div>
+    ${id ? `<p class="hint" style="margin-top:10px">Profit right now: <b class="${c.profit < 0 ? 'neg' : 'pos'}">${money(c.profit)}</b>. Leave a cost blank to use the default from Settings.</p>` : ''}
+    <div class="actions">${id ? '<button type="button" class="btn danger" id="delSale">Delete</button>' : ''}<span class="spacer"></span><button type="button" class="btn ghost" id="cancelSale">Cancel</button><button type="submit" class="btn gold" value="save">${id ? 'Save box' : 'Add sale'}</button></div>`;
+  const dlg = $('#saleDlg');
+  $('#cancelSale').onclick = () => dlg.close();
+  $('#delSale')?.addEventListener('click', async () => {
+    if (!confirm('Delete this box?')) return;
+    await guarded(async () => { await Store.remove([id]); S.sales = S.sales.filter(x => x.id !== id); dlg.close(); toast('Box deleted'); refresh(); });
+  });
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const fd = new FormData(f), num = k => { const v = fd.get(k); return isNum(v) ? Number(v) : null; };
+    const extras = {}; $$('[data-extra]', f).forEach(i => { if (isNum(i.value)) extras[i.dataset.extra] = Number(i.value); });
+    const rec = { soldAt: fromLocalInput(fd.get('soldAt')), product: fd.get('product'), item: fd.get('item'), price: num('price') ?? 0, shipCharged: num('shipCharged'), boxCost: num('boxCost'), fees: num('fees'), shipCost: num('shipCost'), buyer: fd.get('buyer'), notes: fd.get('notes'), extras };
+    await guarded(async () => {
+      if (id){ await Store.update([{ id, ...rec }]); Object.assign(s, rec); toast('Box saved'); }
+      else { const [m] = await Store.create([{ ...rec, saleId: 'M-' + Date.now().toString(36), source: 'manual' }]); S.sales.push(m); toast('Sale added'); }
+      dlg.close(); refresh();
+    });
+  };
+  dlg.showModal();
+}
+
+/* ============ CSV ============ */
+function parseCsv(text){
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++){
+    const ch = text[i];
+    if (q){ if (ch === '"' && text[i + 1] === '"'){ cell += '"'; i++; } else if (ch === '"') q = false; else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ','){ row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r'){ if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell || row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim()));
+}
+$('#csvFile').onchange = async e => {
+  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+  const rows = parseCsv(await file.text()); if (rows.length < 2) return toast('That CSV has no rows', true);
+  const head = rows[0].map(h => h.trim().toLowerCase().replace(/[^a-z]/g, ''));
+  const col = (...names) => head.findIndex(h => names.includes(h));
+  const ix = { soldAt: col('soldat', 'date', 'datetime', 'time', 'createdat', 'ordertime'), price: col('price', 'saleprice', 'amount', 'sold', 'total'), product: col('product', 'line'), item: col('item', 'title', 'productname', 'name'), boxCost: col('boxcost', 'cost', 'cogs'), shipCost: col('shipcost', 'shippingcost'), shipCharged: col('shipcharged', 'shipping', 'shippingfee'), fees: col('fees', 'fee'), notes: col('notes', 'note'), buyer: col('buyer', 'customer', 'username') };
+  if (ix.soldAt < 0 || ix.price < 0) return toast('CSV needs a date column and a price column', true);
+  const n = v => { const x = String(v ?? '').replace(/[^0-9.\-]/g, ''); return isNum(x) ? Number(x) : null; };
+  const list = rows.slice(1).map((r, i) => {
+    const d = new Date(r[ix.soldAt]); if (isNaN(d)) return null;
+    const g = k => ix[k] >= 0 ? r[ix[k]] : '';
+    return { saleId: 'CSV-' + Date.now().toString(36) + '-' + i, soldAt: d.toISOString(), price: n(g('price')) ?? 0, product: g('product').trim(), item: g('item').trim(), boxCost: n(g('boxCost')), shipCost: n(g('shipCost')), shipCharged: n(g('shipCharged')), fees: n(g('fees')), notes: g('notes'), buyer: g('buyer'), source: 'csv', extras: {} };
+  }).filter(Boolean);
+  if (!list.length) return toast('No rows with a readable date', true);
+  if (!confirm(`Import ${list.length} boxes?`)) return;
+  await guarded(async () => { const made = await Store.create(list); S.sales.push(...made); toast(`Imported ${made.length} boxes`); refresh(); });
+};
+function exportCsv(){
+  const head = ['Sold At', 'Day', 'Box #', 'Product', 'Item', 'Price', 'Ship Charged', 'Revenue', 'Box Cost', 'Fees', 'Ship Cost', 'Extras', 'Profit', 'Buyer', 'Source', 'Notes'];
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [head.join(',')].concat(filtered().map(r => [r.soldAt, r.day, r.box, r.prod, r.item, r.price, r.shipCharged || 0, r.rev.toFixed(2), r.cost.toFixed(2), r.fees.toFixed(2), r.shipCost.toFixed(2), r.extra.toFixed(2), r.profit.toFixed(2), r.buyer, r.source, r.notes].map(q).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+  a.download = `helmet-pl-${ymd(new Date())}.csv`; a.click();
+}
+
+/* ============ Settings tab ============ */
+function renderSettings(){
+  const st = S.settings, v = $('#view');
+  const num = (path, label, step = '0.01', hint = '') => `<label>${label}<input type="number" step="${step}" data-k="${path}" value="${esc(getPath(st, path))}">${hint ? `<span>${hint}</span>` : ''}</label>`;
+  const chk = (path, label) => `<label class="check"><input type="checkbox" data-k="${path}" ${getPath(st, path) ? 'checked' : ''}>${label}</label>`;
+  const kpiNames = { revenue: 'Sales total', profit: 'Net profit', costs: 'Costs total', boxes: 'Boxes sold', avgSale: 'Avg sale per box', avgProfit: 'Avg profit per box', bestBox: 'Best box', feesPaid: 'Fees paid', goalDays: 'Days at goal' };
+  const secNames = { daily: 'Day by day chart', running: 'Running total', ledger: 'Every box breakdown', days: 'Stream days table', spread: 'Price bands', products: 'By product' };
+  const tt = S.tiktok;
+  v.innerHTML = `
+    <section class="card" style="margin-top:0"><h2>Business</h2><p class="hint">Changes save on their own.</p><div class="set">
+      <label>Name<input type="text" data-k="business" value="${esc(st.business)}"></label>
+      <label>Currency symbol<input type="text" data-k="currency" value="${esc(st.currency)}" maxlength="3"></label>
+      ${num('dayStartHour', 'Stream day starts at (hour, 0–23)', '1', 'A live that runs past midnight stays on one day.')}
+      ${num('dailyGoal', 'Daily profit goal')}
+      <label>Accent color<input type="color" data-k="accent" value="${esc(st.accent)}"></label>
+    </div></section>
+
+    <section class="card"><h2>Fees and shipping</h2><p class="hint">Used for any box without its own fee or shipping cost. Changing these updates past boxes too.</p><div class="set">
+      ${num('fees.commissionPct', 'TikTok commission %')}
+      ${num('fees.processingPct', 'Payment processing %')}
+      ${num('fees.fixedPerOrder', 'Fixed fee per order')}
+      ${num('defaultShipCost', 'Your shipping cost per box')}
+      ${num('defaultBoxCost', 'Box cost when no product matches')}
+      <div style="display:flex;flex-direction:column;gap:8px;justify-content:center">${chk('fees.onShipping', 'Charge % fees on shipping too')}${chk('shippingRevenue', 'Count shipping paid by buyers as sales')}</div>
+    </div></section>
+
+    <section class="card"><h2>Products</h2><p class="hint">Each line gets its own box cost. TikTok sales are matched to a product when the listing name contains the match word.</p>
+      <div class="list" id="prodList">
+        <div class="lrowset prod-row listhead"><span>Name</span><span>Match word</span><span>Cost per box</span><span>Color</span><span></span></div>
+        ${(st.products || []).map((p, i) => `<div class="lrowset prod-row">
+          <input type="text" data-list="products" data-i="${i}" data-f="name" value="${esc(p.name)}" aria-label="Product name">
+          <input type="text" data-list="products" data-i="${i}" data-f="match" value="${esc(p.match)}" aria-label="Match word">
+          <input type="number" step="0.01" data-list="products" data-i="${i}" data-f="cost" value="${esc(p.cost)}" aria-label="Cost per box">
+          <input type="color" data-list="products" data-i="${i}" data-f="color" value="${esc(p.color || '#c9b800')}" aria-label="Color">
+          <button class="btn ghost" data-del="products" data-i="${i}">Remove</button></div>`).join('')}
+      </div><p><button class="btn" data-add="products">Add product</button></p></section>
+
+    <section class="card"><h2>Extra costs per box</h2><p class="hint">Packaging, giveaway helmets, team bonuses, anything you want taken off each box. Override per box when you edit it.</p>
+      <div class="list">
+        <div class="lrowset extra-row listhead"><span>Name</span><span>Amount</span><span>Type</span><span></span></div>
+        ${(st.extras || []).map((x, i) => `<div class="lrowset extra-row">
+          <input type="text" data-list="extras" data-i="${i}" data-f="name" value="${esc(x.name)}" aria-label="Cost name">
+          <input type="number" step="0.01" data-list="extras" data-i="${i}" data-f="amount" value="${esc(x.amount)}" aria-label="Amount">
+          <select data-list="extras" data-i="${i}" data-f="kind" aria-label="Type"><option value="flat" ${x.kind !== 'pct' ? 'selected' : ''}>Flat per box</option><option value="pct" ${x.kind === 'pct' ? 'selected' : ''}>% of sale</option></select>
+          <button class="btn ghost" data-del="extras" data-i="${i}">Remove</button></div>`).join('')}
+      </div><p><button class="btn" data-add="extras">Add cost</button></p></section>
+
+    <section class="card"><h2>Dashboard layout</h2><p class="hint">Pick what shows on the dashboard.</p>
+      <div class="set">${Object.entries(kpiNames).map(([k, l]) => chk('kpis.' + k, l)).join('')}</div>
+      <div class="set" style="margin-top:12px">${Object.entries(secNames).map(([k, l]) => chk('sections.' + k, l)).join('')}</div></section>
+
+    <section class="card"><h2>TikTok Shop</h2>
+      ${S.mode !== 'api' ? `<p class="hint">TikTok sync needs the Netlify functions. Deploy this folder from GitHub to Netlify, then reload.</p>` :
+      tt?.connected ? `<p class="hint">Connected to <b style="color:var(--text)">${esc(tt.shopName || 'your shop')}</b>.${tt.lastSync ? ` Last synced ${esc(new Date(tt.lastSync).toLocaleString())}.` : ''}</p>
+        <div class="set">${num('tiktok.syncDays', 'Days to pull on each sync', '1')}</div>
+        <p style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn gold" id="syncNow">Sync TikTok</button><button class="btn danger" id="ttOff">Disconnect</button></p>` :
+      `<p class="hint">${tt?.error ? esc(tt.error) : 'Pull every order from your TikTok Shop in automatically, one row per box.'}</p><p><button class="btn gold" id="ttOn">Connect TikTok Shop</button></p>`}
+    </section>
+
+    <section class="card"><h2>Data</h2><p class="hint">${S.mode === 'api' ? 'Saving to Airtable.' : 'Saving to this browser only.'}</p>
+      <p style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="expAll">Export all sales</button>
+      ${S.mode === 'api' ? '<button class="btn ghost" id="resetKey">Change admin key</button>' : '<button class="btn ghost" id="sample2">Load sample data</button><button class="btn danger" id="wipe">Clear this browser\'s data</button>'}</p></section>`;
+
+  $$('[data-k]', v).forEach(el => el.addEventListener('change', () => {
+    let val = el.type === 'checkbox' ? el.checked : el.value;
+    if (el.type === 'number') val = isNum(val) ? Number(val) : 0;
+    setPath(S.settings, el.dataset.k, val); settingsChanged();
+  }));
+  $$('[data-list]', v).forEach(el => el.addEventListener('change', () => {
+    let val = el.value; if (el.type === 'number') val = isNum(val) ? Number(val) : 0;
+    S.settings[el.dataset.list][+el.dataset.i][el.dataset.f] = val; settingsChanged();
+  }));
+  $$('[data-add]', v).forEach(b => b.onclick = () => {
+    const L = b.dataset.add; S.settings[L].push(L === 'products' ? { name: 'New product', match: '', cost: 0, color: '#9b7bff' } : { name: 'New cost', amount: 0, kind: 'flat' });
+    settingsChanged(); renderSettings();
+  });
+  $$('[data-del]', v).forEach(b => b.onclick = () => { S.settings[b.dataset.del].splice(+b.dataset.i, 1); settingsChanged(); renderSettings(); });
+  $('#ttOn')?.addEventListener('click', connectTikTok);
+  $('#syncNow')?.addEventListener('click', syncTikTok);
+  $('#ttOff')?.addEventListener('click', disconnectTikTok);
+  $('#expAll').onclick = () => { const f = S.filter.range; S.filter.range = 'all'; exportCsv(); S.filter.range = f; };
+  $('#resetKey')?.addEventListener('click', () => { askKey(true); toast('Admin key updated'); });
+  $('#sample2')?.addEventListener('click', loadSample);
+  $('#wipe')?.addEventListener('click', () => { if (!confirm('Delete every sale and setting saved in this browser?')) return; localStorage.removeItem('pl_sales'); localStorage.removeItem('pl_settings'); S.sales = []; S.settings = clone(DEFAULTS); applyTheme(); refresh(); toast('Cleared'); });
+}
+let saveT;
+function settingsChanged(){
+  applyTheme(); enrich();
+  clearTimeout(saveT);
+  saveT = setTimeout(() => guarded(async () => { await Store.saveSettings(); toast('Settings saved'); }), 700);
+}
+function applyTheme(){
+  document.documentElement.style.setProperty('--gold', S.settings.accent || '#c9b800');
+  $('#bizName').textContent = S.settings.business || 'Helmet Live';
+  document.title = `${S.settings.business || 'Helmet Live'} P/L`;
+}
+
+/* ============ TikTok ============ */
+async function loadTikTokStatus(){
+  if (S.mode !== 'api') return;
+  try { S.tiktok = await req('tiktok-auth?action=status'); } catch (e){ S.tiktok = { connected: false, error: e.message }; }
+}
+async function connectTikTok(){ await guarded(async () => { const d = await req('tiktok-auth?action=start'); location.href = d.url; }); }
+async function disconnectTikTok(){
+  if (!confirm('Disconnect TikTok? Your logged sales stay.')) return;
+  await guarded(async () => { await req('tiktok-auth?action=disconnect', { method: 'POST' }); S.tiktok = { connected: false }; render(); toast('TikTok disconnected'); });
+}
+async function syncTikTok(){
+  const btns = $$('#syncBtn,#syncNow'); btns.forEach(b => { b.disabled = true; b.textContent = 'Syncing…'; });
+  await guarded(async () => {
+    const d = await req('tiktok-sync', { method: 'POST', body: JSON.stringify({ days: +S.settings.tiktok?.syncDays || 7 }) });
+    S.sales = await Store.list(); S.tiktok.lastSync = new Date().toISOString();
+    toast(`Synced: ${d.created} new, ${d.updated} updated`); refresh();
+  });
+  btns.forEach(b => { b.disabled = false; b.textContent = 'Sync TikTok'; });
+}
+
+/* ============ Sample data (browser mode) ============ */
+async function loadSample(){
+  const list = [], now = new Date();
+  for (let d = 20; d >= 0; d--){
+    if (d % 7 === 3) continue;
+    const day = new Date(now); day.setDate(now.getDate() - d); day.setHours(19, 30, 0, 0);
+    const n = 8 + Math.floor(Math.random() * 14);
+    for (let i = 0; i < n; i++){
+      const grail = Math.random() > .35;
+      list.push({ saleId: `S-${d}-${i}`, soldAt: new Date(day.getTime() + i * 6 * 60000).toISOString(), product: grail ? 'Gridiron Grail' : 'Pup Lids', item: grail ? 'Gridiron Grail mystery helmet' : 'Pup Lids mini helmet', price: Math.round((grail ? 55 : 25) + Math.random() * (grail ? 90 : 40)), shipCharged: 0, source: 'sample', extras: {} });
+    }
+  }
+  S.settings.products.forEach(p => { if (!+p.cost) p.cost = p.name === 'Pup Lids' ? 18 : 48; });
+  S.settings.defaultShipCost = S.settings.defaultShipCost || 9;
+  await Store.saveSettings();
+  const made = await Store.create(list); S.sales.push(...made); toast(`Loaded ${made.length} sample boxes`); refresh();
+}
+
+/* ============ App shell ============ */
+async function guarded(fn){ try { await fn(); } catch (e){ console.error(e); toast(e.message || 'Something went wrong', true); } }
+function setTab(t){ S.tab = t; $$('nav.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t)); render(); }
+function render(){
+  renderFilters();
+  ({ dash: renderDash, sales: renderSales, settings: renderSettings })[S.tab]();
+}
+function refresh(){ enrich(); render(); }
+$$('nav.tabs button').forEach(b => b.onclick = () => setTab(b.dataset.tab));
+
+(async function boot(){
+  await guarded(() => Store.init());
+  applyTheme();
+  $('#modeLine').textContent = S.mode === 'api' ? 'Profit & loss, synced to Airtable' : 'Profit & loss, saved in this browser';
+  if (S.mode === 'local' && location.protocol !== 'file:') $('#banner').innerHTML = `<div class="banner">Running without the Netlify functions, so data stays in this browser. Deploy from GitHub to sync with Airtable and TikTok.</div>`;
+  const u = new URLSearchParams(location.search);
+  if (u.get('tiktok') === 'connected') toast('TikTok Shop connected');
+  if (u.get('tiktok') === 'error') toast(u.get('msg') || 'TikTok connection failed', true);
+  if (u.has('tiktok')) history.replaceState(null, '', location.pathname);
+  await guarded(async () => { S.sales = await Store.list(); });
+  await loadTikTokStatus();
+  refresh();
+})();
+</script>
+</body>
+</html>
