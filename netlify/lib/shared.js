@@ -119,16 +119,23 @@ async function syncRange(from, to) {
     pageToken = d.next_page_token || '';
   } while (pageToken && orders.length < 5000);
 
+  // Sales = item subtotal (paid, not cancelled). GMV = what the buyer paid minus tax, incl. shipping,
+  // and like Seller Center it keeps cancelled/refunded orders in. Unpaid orders count toward neither.
   const totals = {};
   for (const o of orders) {
-    if (SKIP.includes(o.status)) continue;
+    if (o.status === 'UNPAID') continue;
     const day = dayOf(Number(o.create_time) * 1000);
     if (day < from || day > to) continue;
-    const amt = Number(o.payment?.sub_total ?? o.payment?.total_amount ?? 0);
-    (totals[day] ||= { sales: 0, orders: 0 });
-    totals[day].sales += amt; totals[day].orders++;
+    const p = o.payment || {};
+    const t = (totals[day] ||= { sales: 0, orders: 0, gmv: 0 });
+    const tax = p.tax != null ? Number(p.tax) : Number(p.product_tax || 0) + Number(p.shipping_fee_tax || 0);
+    t.gmv += Number(p.total_amount || 0) - tax;
+    if (SKIP.includes(o.status)) continue;
+    t.sales += Number(p.sub_total ?? p.total_amount ?? 0);
+    t.orders++;
   }
-  const rows = Object.entries(totals).map(([d, v]) => ({ Date: d, Sales: Math.round(v.sales * 100) / 100, Orders: v.orders }));
+  const r2 = n => Math.round(n * 100) / 100;
+  const rows = Object.entries(totals).map(([d, v]) => ({ Date: d, Sales: r2(v.sales), GMV: r2(v.gmv), Orders: v.orders }));
   await upsertDays(rows);
   await setKV('tiktok_last_sync', new Date().toISOString());
   return { from, to, orders: orders.length, days: rows };
