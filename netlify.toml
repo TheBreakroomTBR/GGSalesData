@@ -4,3 +4,8 @@
 
 [functions]
   node_bundler = "esbuild"
+
+# Pulls yesterday's (and the day before's) TikTok sales every morning
+# 11:00 UTC = 6am Eastern in winter, 7am in summer
+[functions."daily-sync"]
+  schedule = "0 11 * * *"
