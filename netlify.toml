@@ -9,3 +9,10 @@
 # 11:00 UTC = 6am Eastern in winter, 7am in summer
 [functions."daily-sync"]
   schedule = "0 11 * * *"
+
+# Claude connector: https://YOUR-SITE.netlify.app/mcp/<MCP_KEY>
+[[redirects]]
+  from = "/mcp/*"
+  to = "/.netlify/functions/mcp/:splat"
+  status = 200
+  force = true
