@@ -16,3 +16,10 @@
   to = "/.netlify/functions/mcp/:splat"
   status = 200
   force = true
+
+# EchoTik through the same key: https://YOUR-SITE.netlify.app/echotik/<MCP_KEY>
+[[redirects]]
+  from = "/echotik/*"
+  to = "/.netlify/functions/echotik/:splat"
+  status = 200
+  force = true
