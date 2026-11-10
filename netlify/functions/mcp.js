@@ -43,6 +43,39 @@ function range(a) {
   return { start_date_ge: from, end_date_lt: addDays(to, 1) };
 }
 
+
+/* ---------- EchoTik (competitor LIVEs), called through EchoTik's own MCP server ---------- */
+async function echotik(tool, args) {
+  const url = process.env.ECHOTIK_MCP_URL || 'https://mcp.echotik.live/mcp';
+  if (!process.env.ECHOTIK_USERNAME) throw new Error('Set ECHOTIK_USERNAME and ECHOTIK_PASSWORD in Netlify');
+  const base = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
+    'X-EchoTik-Username': process.env.ECHOTIK_USERNAME, 'X-EchoTik-Password': process.env.ECHOTIK_PASSWORD };
+  const parse = async r => { const t = await r.text(); const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('event-stream')) return t ? JSON.parse(t) : {};
+    const line = t.split('\n').filter(l => l.startsWith('data:')).pop(); return line ? JSON.parse(line.slice(5)) : {}; };
+  if (!echotik.sid) {
+    const r = await fetch(url, { method: 'POST', headers: base, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'helmet-live', version: '1' } } }) });
+    await parse(r); echotik.sid = r.headers.get('mcp-session-id') || '';
+    await fetch(url, { method: 'POST', headers: { ...base, ...(echotik.sid ? { 'Mcp-Session-Id': echotik.sid } : {}) },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) });
+  }
+  const r = await fetch(url, { method: 'POST', headers: { ...base, ...(echotik.sid ? { 'Mcp-Session-Id': echotik.sid } : {}) },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: tool, arguments: args } }) });
+  const d = await parse(r);
+  if (d.error) { echotik.sid = null; throw new Error(`EchoTik: ${d.error.message}`); }
+  const text = (d.result?.content || []).map(c => c.text || '').join('');
+  try { return JSON.parse(text); } catch { throw new Error(`EchoTik: ${text.slice(0, 200)}`); }
+}
+function roomSummary(room) {
+  const r = room || {}, mins = r.start_time ? Math.round((Date.now() / 1000 - r.start_time) / 60) : null;
+  return { title: r.title, viewers_now: r.user_count, total_entered: r.stats?.total_user, likes: r.like_count, shares: r.stats?.share_count,
+    minutes_live: mins, entered_per_hour: mins ? Math.round((r.stats?.total_user || 0) / mins * 60) : null,
+    likes_per_minute: mins ? Math.round((r.like_count || 0) / mins) : null,
+    followers: r.owner?.follow_info?.follower_count, topic: r.hashtag?.title, third_party_encoder: !!r.live_type_third_party,
+    shop_products: r.has_commerce_goods };
+}
+
 /* ---------- tools ---------- */
 const TOOLS = [
   {
@@ -123,6 +156,24 @@ const TOOLS = [
       if (/token|authorization\/|\/delete|\/cancel|\/update|\/create|\/activate|\/deactivate/i.test(a.path)) throw new Error('That endpoint is blocked (not read-only)');
       const q = Object.fromEntries(Object.entries(a.query || {}).map(([k, v]) => [k, String(v)]));
       return { path: a.path, data: await tt(m, a.path, q, m === 'POST' ? (a.body || {}) : null) };
+    }
+  },
+  {
+    name: 'competitor_lives',
+    description: 'Who is LIVE right now for a keyword (default "football helmets") and a short snapshot of each room via EchoTik: viewers now, total entered, entered per hour, likes and likes per minute, shares, minutes live, followers, topic, whether they stream from an encoder like OBS. Use to compare against our live in real time.',
+    inputSchema: { type: 'object', properties: { keyword: { type: 'string' }, region: { type: 'string' }, max_rooms: { type: 'number', description: 'default 8' } } },
+    run: async (a) => {
+      const s = await echotik('get_api_v3_realtime_live_search', { keyword: a.keyword || 'football helmets', region: a.region || 'US' });
+      const items = (s.data?.data || s.data || []).filter(x => x?.lives?.author?.room_id_str).slice(0, Math.min(+a.max_rooms || 8, 15));
+      const out = [];
+      for (const it of items) {
+        const au = it.lives.author;
+        try {
+          const d = await echotik('get_api_v3_realtime_live_detail', { room_id: au.room_id_str, user_id: au.uid });
+          out.push({ account: au.unique_id, ...roomSummary(d.data?.data || d.data) });
+        } catch (e) { out.push({ account: au.unique_id, title: au.room_title, error: e.message.slice(0, 120) }); }
+      }
+      return { keyword: a.keyword || 'football helmets', checked_at: new Date().toISOString(), rooms: out };
     }
   },
   {
