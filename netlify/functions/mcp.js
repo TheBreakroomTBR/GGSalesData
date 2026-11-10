@@ -33,7 +33,9 @@ async function ttTry(method, paths, query, body) {
   }
   const err = new Error(errors.join('\n')); err.tried = errors; throw err;
 }
-const V = ['202509', '202508', '202507', '202506', '202505', '202406', '202405'];
+const V = ['202512', '202511', '202510', '202509', '202508', '202507', '202506', '202505', '202406', '202405'];
+const TZ = process.env.TZ_NAME || 'America/New_York';
+const clock = s => new Date(Number(s) * 1000).toLocaleTimeString('en-US', { timeZone: TZ, hour: 'numeric', minute: '2-digit' });
 const ymdOk = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
 function range(a) {
   const to = ymdOk(a.end_date) ? a.end_date : today();
@@ -71,10 +73,29 @@ const TOOLS = [
   },
   {
     name: 'live_minute_by_minute',
-    description: 'Per-minute stats for one LIVE (viewers in/out, concurrent viewers, orders over time). Use to find when viewers drop off. Needs live_id from live_sessions.',
-    inputSchema: { type: 'object', properties: { live_id: { type: 'string' }, page_token: { type: 'string' } }, required: ['live_id'] },
-    run: async (a) => ttTry('GET', V.map(v => `/analytics/${v}/shop_lives/${encodeURIComponent(a.live_id)}/performance_per_minutes`),
-      { currency: 'USD', ...(a.page_token ? { page_token: a.page_token } : {}) })
+    description: 'Minute-by-minute stats for one LIVE rolled up into 5-minute rows (feed impressions, views, enter rate = views/impressions, viewers, comments, clicks, orders, GMV). Use to find when traffic or entry drops. Needs live_id from live_sessions.',
+    inputSchema: { type: 'object', properties: { live_id: { type: 'string' }, bucket_minutes: { type: 'number', description: 'minutes per row, default 5' }, page_token: { type: 'string' } }, required: ['live_id'] },
+    run: async (a) => {
+      // Pull every page, then roll up into buckets so the reply stays small
+      const bucket = Math.max(1, Math.min(+a.bucket_minutes || 5, 60));
+      let token = a.page_token || '', path, all = [];
+      for (let i = 0; i < 40; i++) {
+        const r = await ttTry('GET', V.map(v => `/analytics/${v}/shop_lives/${encodeURIComponent(a.live_id)}/performance_per_minutes`), { currency: 'USD', ...(token ? { page_token: token } : {}) });
+        path = r.path; all.push(...(r.data?.performance?.intervals || [])); token = r.data?.next_page_token || '';
+        if (!token) break;
+      }
+      all.sort((x, y) => x.start_time - y.start_time);
+      const rows = [];
+      for (let i = 0; i < all.length; i += bucket) {
+        const g = all.slice(i, i + bucket), sum = f => g.reduce((t, x) => t + Number(f(x) || 0), 0);
+        const imp = sum(x => x.traffic?.impressions), views = sum(x => x.traffic?.views);
+        rows.push({ time: clock(g[0].start_time), impressions: imp, views, enter_rate: imp ? +(views / imp).toFixed(2) : 0,
+          avg_viewers: Math.round(sum(x => x.traffic?.viewers) / g.length), comments: sum(x => x.interactions?.comments), likes: sum(x => x.interactions?.likes),
+          new_followers: sum(x => x.interactions?.new_followers), product_clicks: sum(x => x.traffic?.product_clicks), orders: sum(x => x.sales?.sku_orders),
+          gmv: +sum(x => x.sales?.gmv?.amount).toFixed(2) });
+      }
+      return { path, minutes: all.length, bucket_minutes: bucket, rows };
+    }
   },
   {
     name: 'live_products',
