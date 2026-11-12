@@ -177,6 +177,35 @@ const TOOLS = [
     }
   },
   {
+    name: 'fee_breakdown',
+    description: "Adds up every fee, tax, shipping and discount line across a statement's transactions (one per order), so you can see commission vs transaction fee vs affiliate vs label costs. Statements have thousands of rows: each call reads up to max_pages x 100 rows and returns running totals plus next_page_token. Pass the returned totals back in as 'carry' with that token to continue. Get statement ids from tiktok_api_get /finance/202309/statements.",
+    inputSchema: { type: 'object', properties: {
+      statement_id: { type: 'string' }, page_token: { type: 'string' }, max_pages: { type: 'number', description: 'default 8' },
+      carry: { type: 'object', description: 'totals object from the previous call' } }, required: ['statement_id'] },
+    run: async (a) => {
+      const sums = { ...(a.carry?.sums || {}) }; let rows = a.carry?.rows || 0, types = { ...(a.carry?.types || {}) };
+      let token = a.page_token || '', head = a.carry?.statement || null;
+      const add = (prefix, obj) => { for (const [k, v] of Object.entries(obj || {})) {
+        if (v && typeof v === 'object') add(`${prefix}${k}.`, v);
+        else { const n = Number(v); if (n) sums[prefix + k] = Math.round(((sums[prefix + k] || 0) + n) * 100) / 100; } } };
+      const pages = Math.max(1, Math.min(+a.max_pages || 8, 12));
+      for (let i = 0; i < pages; i++) {
+        const r = await ttTry('GET', ['202501', '202507', '202509'].map(v => `/finance/${v}/statements/${encodeURIComponent(a.statement_id)}/statement_transactions`),
+          { page_size: '100', sort_field: 'order_create_time', ...(token ? { page_token: token } : {}) });
+        const d = r.data || {};
+        if (!head) head = { id: d.id, create_time: d.create_time, total_count: d.total_count, settlement: d.total_settlement_amount, payable: d.payable_amount, reserve: d.total_reserve_amount, breakdown: d.total_settlement_breakdown };
+        for (const t of d.transactions || []) {
+          rows++; types[t.type] = (types[t.type] || 0) + 1;
+          add('fee.', t.fee_tax_breakdown?.fee); add('tax.', t.fee_tax_breakdown?.tax);
+          add('ship.', t.shipping_cost_breakdown); add('rev.', t.revenue_breakdown); add('pay.', t.supplementary_component);
+        }
+        token = d.next_page_token || '';
+        if (!token || !(d.transactions || []).length) { token = ''; break; }
+      }
+      return { done: !token, next_page_token: token || null, carry: { statement: head, rows, types, sums } };
+    }
+  },
+  {
     name: 'pl_days',
     description: "The P&L tracker's own data from Airtable: each day's GMV, item sales, orders, shipping, fees, plus every breaker row (Sam, Kris) with Gridiron Grail / Pup Lids boxes and box cost. Dates YYYY-MM-DD; default last 30 days.",
     inputSchema: { type: 'object', properties: { start_date: { type: 'string' }, end_date: { type: 'string' } } },
